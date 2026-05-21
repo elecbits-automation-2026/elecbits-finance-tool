@@ -686,7 +686,7 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
   });
 
   const tabs = [];
-  if (inbox.length > 0 || user.role !== "Employee") tabs.push({ id: "inbox", label: "Action Needed", icon: Clock, count: inbox.length, highlight: inbox.length > 0 });
+  if (inbox.length > 0 || user.role !== "Employee") tabs.push({ id: "inbox", label: "Action - Need to do", icon: Clock, count: inbox.length, highlight: inbox.length > 0 });
   tabs.push({ id: "my-requests", label: "My Requests", icon: FileText, count: myItems.length });
   if (canSeeMyApprovals) tabs.push({ id: "my-approvals", label: "My Approvals", icon: CheckSquare, count: myApprovalItems.length });
   tabs.push({ id: "new-budget", label: "Raise Budget", icon: PiggyBank });
