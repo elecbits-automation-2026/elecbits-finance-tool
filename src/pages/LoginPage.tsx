@@ -34,7 +34,7 @@ export function LoginPage({ onLogin }) {
             <ElecbitsLogo size="lg" showTagline />
             <p className="text-xs text-slate-500 mt-2">Budget · PO · Payment Management</p>
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Welcome back Admin</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Welcome back</h2>
           <p className="text-sm text-slate-600 mb-6">Sign in with your @elecbits.in email</p>
           <div className="space-y-4">
             <div>
