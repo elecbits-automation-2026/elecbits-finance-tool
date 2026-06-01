@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import {
-  USERS, SEED_BUDGETS, SEED_POS,
-  STORAGE_KEY_REQUESTS, STORAGE_KEY_BUDGETS, STORAGE_KEY_NOTIFS, STORAGE_KEY_POS, STORAGE_KEY_PO_COUNTER,
-} from "./constants";
+import { SEED_BUDGETS, SEED_POS } from "./constants";
+import { db } from "./lib/db";
+import { signIn, signOut, getCurrentUser } from "./lib/auth";
 import { LoginPage } from "./pages/LoginPage";
 import { Dashboard } from "./pages/Dashboard";
 import { Toast } from "./components/Toast";
@@ -17,66 +16,70 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
+  // Restore an existing Supabase session on first load.
   useEffect(() => {
-    loadData().catch(err => {
-      console.error("Fatal load error:", err);
-      // Use seed data as fallback
-      setBudgets(SEED_BUDGETS);
-      setPOs(SEED_POS);
-      setPOCounter(2);
-      setLoading(false);
-    });
+    getCurrentUser()
+      .then((u) => setCurrentUser(u))
+      .catch((err) => console.error("Session restore failed:", err))
+      .finally(() => setLoading(false));
   }, []);
+
+  // Load shared finance data once a user is signed in.
+  useEffect(() => {
+    if (currentUser && !dataLoaded) {
+      loadData()
+        .then(() => setDataLoaded(true))
+        .catch((err) => console.error("Fatal load error:", err));
+    }
+  }, [currentUser, dataLoaded]);
 
   async function loadData() {
     // Requests
     try {
-      const r = await window.storage.get(STORAGE_KEY_REQUESTS, true);
-      if (r && r.value) setRequests(JSON.parse(r.value));
+      setRequests(await db.fetchRequests());
     } catch (err) {
-      console.log("No requests in storage yet:", err?.message);
+      console.log("Requests load failed:", err?.message);
       setRequests([]);
     }
 
-    // Budgets
+    // Budgets (seed on first run if empty)
     try {
-      const b = await window.storage.get(STORAGE_KEY_BUDGETS, true);
-      if (b && b.value) {
-        setBudgets(JSON.parse(b.value));
+      const b = await db.fetchBudgets();
+      if (b.length > 0) {
+        setBudgets(b);
       } else {
         setBudgets(SEED_BUDGETS);
-        try { await window.storage.set(STORAGE_KEY_BUDGETS, JSON.stringify(SEED_BUDGETS), true); } catch (e) { console.log("Seed budget save failed:", e?.message); }
+        try { await db.saveBudgets(SEED_BUDGETS); } catch (e) { console.log("Seed budget save failed:", e?.message); }
       }
     } catch (err) {
       console.log("Budget load failed, using seed:", err?.message);
       setBudgets(SEED_BUDGETS);
-      try { await window.storage.set(STORAGE_KEY_BUDGETS, JSON.stringify(SEED_BUDGETS), true); } catch {}
     }
 
-    // POs
+    // POs (seed on first run if empty)
     try {
-      const p = await window.storage.get(STORAGE_KEY_POS, true);
-      if (p && p.value) {
-        setPOs(JSON.parse(p.value));
+      const p = await db.fetchPOs();
+      if (p.length > 0) {
+        setPOs(p);
       } else {
         setPOs(SEED_POS);
-        try { await window.storage.set(STORAGE_KEY_POS, JSON.stringify(SEED_POS), true); } catch (e) { console.log("Seed PO save failed:", e?.message); }
+        try { await db.savePOs(SEED_POS); } catch (e) { console.log("Seed PO save failed:", e?.message); }
       }
     } catch (err) {
       console.log("PO load failed, using seed:", err?.message);
       setPOs(SEED_POS);
-      try { await window.storage.set(STORAGE_KEY_POS, JSON.stringify(SEED_POS), true); } catch {}
     }
 
     // PO Counter
     try {
-      const c = await window.storage.get(STORAGE_KEY_PO_COUNTER, true);
-      if (c && c.value) {
-        setPOCounter(parseInt(c.value));
+      const c = await db.fetchPOCounter();
+      if (c != null) {
+        setPOCounter(c);
       } else {
         setPOCounter(2);
-        try { await window.storage.set(STORAGE_KEY_PO_COUNTER, "2", true); } catch {}
+        try { await db.savePOCounter(2); } catch {}
       }
     } catch (err) {
       console.log("PO counter load failed, using 2:", err?.message);
@@ -85,36 +88,38 @@ export default function App() {
 
     // Notifications
     try {
-      const n = await window.storage.get(STORAGE_KEY_NOTIFS, true);
-      if (n && n.value) setNotifications(JSON.parse(n.value));
+      setNotifications(await db.fetchNotifications());
     } catch (err) {
       console.log("Notifications load failed:", err?.message);
       setNotifications([]);
     }
-
-    // Always set loading false at the end
-    setLoading(false);
   }
 
-  async function saveRequests(v) { setRequests(v); try { await window.storage.set(STORAGE_KEY_REQUESTS, JSON.stringify(v), true); } catch {} }
-  async function saveBudgets(v) { setBudgets(v); try { await window.storage.set(STORAGE_KEY_BUDGETS, JSON.stringify(v), true); } catch {} }
-  async function savePOs(v) { setPOs(v); try { await window.storage.set(STORAGE_KEY_POS, JSON.stringify(v), true); } catch {} }
-  async function savePOCounter(v) { setPOCounter(v); try { await window.storage.set(STORAGE_KEY_PO_COUNTER, String(v), true); } catch {} }
-  async function saveNotifications(v) { setNotifications(v); try { await window.storage.set(STORAGE_KEY_NOTIFS, JSON.stringify(v), true); } catch {} }
+  async function saveRequests(v) { setRequests(v); try { await db.saveRequests(v); } catch (e) { console.error("saveRequests failed:", e?.message); } }
+  async function saveBudgets(v) { setBudgets(v); try { await db.saveBudgets(v); } catch (e) { console.error("saveBudgets failed:", e?.message); } }
+  async function savePOs(v) { setPOs(v); try { await db.savePOs(v); } catch (e) { console.error("savePOs failed:", e?.message); } }
+  async function savePOCounter(v) { setPOCounter(v); try { await db.savePOCounter(v); } catch (e) { console.error("savePOCounter failed:", e?.message); } }
+  async function saveNotifications(v) { setNotifications(v); try { await db.saveNotifications(v); } catch (e) { console.error("saveNotifications failed:", e?.message); } }
   function showToast(message, type = "info") { setToast({ message, type, id: Date.now() }); setTimeout(() => setToast(null), 3000); }
   async function addNotifications(newOnes) { await saveNotifications([...newOnes, ...notifications]); }
 
-  function handleLogin(email, password) {
-    const user = USERS.find(u => u.email.toLowerCase() === email.toLowerCase().trim() && u.password === password);
-    if (user) { setCurrentUser(user); return { success: true }; }
-    return { success: false, error: "Invalid email or password" };
+  async function handleLogin(email, password) {
+    const res = await signIn(email, password);
+    if (res.success) { setCurrentUser(res.user); return { success: true }; }
+    return { success: false, error: res.error };
+  }
+
+  async function handleLogout() {
+    await signOut();
+    setCurrentUser(null);
+    setDataLoaded(false);
   }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="text-slate-500">Loading…</div></div>;
   if (!currentUser) return <LoginPage onLogin={handleLogin} />;
   return (
     <>
-      <Dashboard user={currentUser} requests={requests} budgets={budgets} pos={pos} poCounter={poCounter} notifications={notifications} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} saveNotifications={saveNotifications} addNotifications={addNotifications} showToast={showToast} onLogout={() => setCurrentUser(null)} />
+      <Dashboard user={currentUser} requests={requests} budgets={budgets} pos={pos} poCounter={poCounter} notifications={notifications} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} saveNotifications={saveNotifications} addNotifications={addNotifications} showToast={showToast} onLogout={handleLogout} />
       {toast && <Toast toast={toast} />}
     </>
   );

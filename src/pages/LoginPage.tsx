@@ -10,10 +10,10 @@ export function LoginPage({ onLogin }) {
   const [error, setError] = useState("");
   const [showHints, setShowHints] = useState(false);
 
-  function submit() {
+  async function submit() {
     setError("");
     if (!email || !password) { setError("Please enter both email and password"); return; }
-    const r = onLogin(email, password);
+    const r = await onLogin(email, password);
     if (!r.success) setError(r.error);
   }
 

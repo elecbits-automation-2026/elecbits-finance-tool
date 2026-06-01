@@ -105,6 +105,25 @@ export const STORAGE_KEY_BUDGETS = "elecbits_fos_budgets_v4";
 export const STORAGE_KEY_NOTIFS = "elecbits_fos_notifs_v1";
 export const STORAGE_KEY_POS = "elecbits_fos_pos_v3";
 export const STORAGE_KEY_PO_COUNTER = "elecbits_fos_po_counter_v3";
+export const STORAGE_KEY_USERS = "elecbits_fos_users_v1";
+export const STORAGE_KEY_ADMIN = "elecbits_fos_admin_v1";
+export const STORAGE_KEY_PENDING = "elecbits_fos_pending_signups_v1";
+
+// ============ ROLES (admin-assignable) ============
+export const ASSIGNABLE_ROLES = [
+  { id: "Employee", label: "Employee" },
+  { id: "DeptApprover", label: "Department Head" },
+  { id: "BoxBuildMidApprover", label: "Box Build Delivery Head" },
+  { id: "Accountant", label: "Accountant" },
+  { id: "FinanceHead", label: "Finance Head" },
+  { id: "SuperManager", label: "Manager (Special Access)" },
+  { id: "VP", label: "Vice President" },
+  { id: "CEO", label: "CEO" },
+];
+
+export const DEPARTMENTS = [
+  "Executive", "Management", "Finance", "HR", "ODM", "Box Build", "Sales", "Product+Marketing", "Other",
+];
 
 // GSTIN regex (15 chars, Indian format)
 export const GSTIN_REGEX = /^[0-9]{2}[A-Z]{4}[0-9A-Z]{1}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
