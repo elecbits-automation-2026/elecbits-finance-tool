@@ -53,7 +53,7 @@ export async function signOut() {
 
 // Self-service signup: creates the auth account and a pending profile +
 // pending_signups record for an admin to assign a role/department.
-export async function signUp(opts: { email: string; password: string; name: string; dept?: string; requestedRole?: string }) {
+export async function signUp(opts: { email: string; password: string; name: string; dept?: string; designation?: string; requestedRole?: string }) {
   const email = opts.email.toLowerCase().trim();
   const { data, error } = await supabase.auth.signUp({ email, password: opts.password });
   if (error) return { success: false as const, error: error.message };
@@ -66,6 +66,7 @@ export async function signUp(opts: { email: string; password: string; name: stri
         email,
         name: opts.name,
         dept: opts.dept ?? null,
+        designation: opts.designation ?? null,
         role: opts.requestedRole ?? "Employee",
         status: "pending",
       },
@@ -77,7 +78,65 @@ export async function signUp(opts: { email: string; password: string; name: stri
       dept: opts.dept ?? null,
       requested_role: opts.requestedRole ?? "Employee",
       status: "pending",
+      data: opts.designation ? { designation: opts.designation } : null,
     });
   }
+  return { success: true as const };
+}
+
+// ---------------------------------------------------------------------------
+// Admin: review & action self-service signups (SuperManager / CEO only — the
+// profiles_update_admin RLS policy enforces this server-side).
+// ---------------------------------------------------------------------------
+
+// List profiles still awaiting admin approval, oldest first.
+export async function listPendingSignups() {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((p) => ({ ...toUser(p), createdAt: p.created_at }));
+}
+
+// Approve a pending signup: assign role/dept/designation and activate it.
+export async function approveSignup(
+  authId: string,
+  email: string,
+  opts: { role: string; dept?: string; designation?: string }
+) {
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      role: opts.role,
+      dept: opts.dept ?? null,
+      designation: opts.designation ?? null,
+      status: "active",
+    })
+    .eq("auth_id", authId);
+  if (error) return { success: false as const, error: error.message };
+
+  await supabase
+    .from("pending_signups")
+    .update({ status: "approved" })
+    .eq("email", email)
+    .eq("status", "pending");
+  return { success: true as const };
+}
+
+// Reject a pending signup: disable the profile so it can never sign in.
+export async function rejectSignup(authId: string, email: string) {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ status: "disabled" })
+    .eq("auth_id", authId);
+  if (error) return { success: false as const, error: error.message };
+
+  await supabase
+    .from("pending_signups")
+    .update({ status: "rejected" })
+    .eq("email", email)
+    .eq("status", "pending");
   return { success: true as const };
 }
