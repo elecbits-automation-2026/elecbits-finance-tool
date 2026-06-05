@@ -1,4 +1,13 @@
 import { supabase } from "./supabase";
+import { ADMIN_EMAIL } from "../constants";
+
+// The dedicated admin signs in by typing the bare username "admin"; map it to
+// the real auth email. Anything containing "@" is treated as a normal email.
+function resolveLoginEmail(input: string) {
+  const v = input.toLowerCase().trim();
+  if (v === "admin") return ADMIN_EMAIL;
+  return v;
+}
 
 // Map a profiles row to the `currentUser` shape the rest of the app expects.
 // `id` stays the legacy U01.. id so every existing reference keeps working.
@@ -34,7 +43,7 @@ export async function getCurrentUser() {
 
 export async function signIn(email: string, password: string) {
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.toLowerCase().trim(),
+    email: resolveLoginEmail(email),
     password,
   });
   if (error) return { success: false as const, error: error.message };
@@ -138,5 +147,44 @@ export async function rejectSignup(authId: string, email: string) {
     .update({ status: "rejected" })
     .eq("email", email)
     .eq("status", "pending");
+  return { success: true as const };
+}
+
+// ---------------------------------------------------------------------------
+// Admin Console: manage every employee — assign roles, activate/deactivate.
+// (Admin / SuperManager / CEO only — enforced server-side by the
+// profiles_update_admin RLS policy.)
+// ---------------------------------------------------------------------------
+
+// The 7 assignable role-groups (reference catalog), oldest-first by rank.
+export async function listRoles() {
+  const { data, error } = await supabase.from("roles").select("*").order("rank", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Every employee profile (excludes the admin account itself), sorted by name.
+export async function listEmployees() {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .neq("role", "Admin")
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((p) => ({ ...toUser(p), createdAt: p.created_at }));
+}
+
+// Assign a role-group (profiles.role) to an employee.
+export async function setEmployeeRole(authId: string, role: string) {
+  const { error } = await supabase.from("profiles").update({ role }).eq("auth_id", authId);
+  if (error) return { success: false as const, error: error.message };
+  return { success: true as const };
+}
+
+// Activate or deactivate an account. 'active' lets them sign in; 'disabled'
+// blocks sign-in (also used to activate a pending signup).
+export async function setEmployeeStatus(authId: string, status: "active" | "disabled") {
+  const { error } = await supabase.from("profiles").update({ status }).eq("auth_id", authId);
+  if (error) return { success: false as const, error: error.message };
   return { success: true as const };
 }

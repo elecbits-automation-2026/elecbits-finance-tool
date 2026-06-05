@@ -10,7 +10,24 @@
  * The service-role key bypasses RLS and can create users — keep it secret.
  */
 import { createClient } from "@supabase/supabase-js";
-import { USERS, SEED_BUDGETS, SEED_POS } from "../src/constants";
+import { USERS, SEED_BUDGETS, SEED_POS, ADMIN_EMAIL } from "../src/constants";
+
+// The dedicated admin account (login: "admin" / admin@123) and the 7 assignable
+// role-groups. The roles table is also seeded by migration 0004; this upsert is
+// a belt-and-suspenders so `npm run seed` alone leaves a working setup.
+// Admin password comes from the environment so it isn't hard-coded in the repo.
+// Set ADMIN_PASSWORD in .env.local; falls back to the documented default for
+// first-run convenience (change it for any real deployment).
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin@123";
+const ROLES = [
+  { id: 1, key: "Employee",     label: "Employee",        titles: "Emp, Junior, Intern, Executive",      rank: 1 },
+  { id: 2, key: "DeptApprover", label: "Department Head", titles: "Manager, Dept Head, Reporting Manager", rank: 2 },
+  { id: 3, key: "Accountant",   label: "Accountant",      titles: "Accountant",                          rank: 3 },
+  { id: 4, key: "FinanceHead",  label: "Finance Head",    titles: "Finance Head",                        rank: 4 },
+  { id: 5, key: "VP",           label: "Vice President",  titles: "VP",                                  rank: 5 },
+  { id: 6, key: "CEO",          label: "CEO",             titles: "CEO",                                 rank: 6 },
+  { id: 7, key: "SuperManager", label: "Special Access",  titles: "Special",                             rank: 7 },
+];
 
 const url = process.env.VITE_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -77,6 +94,54 @@ async function seedUsers() {
   }
 }
 
+async function seedAdmin() {
+  let authId: string | undefined;
+
+  const { data: created, error } = await admin.auth.admin.createUser({
+    email: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
+    email_confirm: true,
+  });
+
+  if (created?.user) {
+    authId = created.user.id;
+    console.log(`created admin auth user ${ADMIN_EMAIL}`);
+  } else {
+    const existing = await findAuthUserByEmail(ADMIN_EMAIL);
+    if (existing) {
+      authId = existing.id;
+      // Already exists — sync the password so rotating ADMIN_PASSWORD + re-seeding takes effect.
+      const { error: upErr } = await admin.auth.admin.updateUserById(authId, { password: ADMIN_PASSWORD });
+      console.log(`admin auth user exists ${ADMIN_EMAIL} — password ${upErr ? `update failed (${upErr.message})` : "synced"}`);
+    } else {
+      console.error(`could not create or find admin ${ADMIN_EMAIL}: ${error?.message}`);
+      return;
+    }
+  }
+
+  const { error: pErr } = await admin.from("profiles").upsert(
+    {
+      auth_id: authId,
+      legacy_id: "ADMIN",
+      email: ADMIN_EMAIL,
+      name: "Administrator",
+      dept: null,
+      designation: "Administrator",
+      role: "Admin",
+      scope: null,
+      status: "active",
+    },
+    { onConflict: "auth_id" }
+  );
+  if (pErr) console.error(`admin profile upsert failed: ${pErr.message}`);
+}
+
+async function seedRoles() {
+  const { error } = await admin.from("roles").upsert(ROLES, { onConflict: "id" });
+  if (error) console.error("roles seed failed:", error.message);
+  else console.log(`seeded ${ROLES.length} roles`);
+}
+
 function num(o: any) {
   return o.amountINR ?? o.amount ?? null;
 }
@@ -111,6 +176,8 @@ async function seedCounter() {
 }
 
 async function main() {
+  await seedRoles();
+  await seedAdmin();
   await seedUsers();
   await seedBudgets();
   await seedPOs();

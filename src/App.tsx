@@ -4,6 +4,7 @@ import { db } from "./lib/db";
 import { signIn, signOut, getCurrentUser } from "./lib/auth";
 import { LoginPage } from "./pages/LoginPage";
 import { Dashboard } from "./pages/Dashboard";
+import { AdminConsole } from "./pages/AdminConsole";
 import { Toast } from "./components/Toast";
 
 // ============ MAIN APP ============
@@ -27,8 +28,9 @@ export default function App() {
   }, []);
 
   // Load shared finance data once a user is signed in.
+  // The admin account never touches the finance dashboard, so skip the load.
   useEffect(() => {
-    if (currentUser && !dataLoaded) {
+    if (currentUser && currentUser.role !== "Admin" && !dataLoaded) {
       loadData()
         .then(() => setDataLoaded(true))
         .catch((err) => console.error("Fatal load error:", err));
@@ -117,6 +119,12 @@ export default function App() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="text-slate-500">Loading…</div></div>;
   if (!currentUser) return <LoginPage onLogin={handleLogin} />;
+  if (currentUser.role === "Admin") return (
+    <>
+      <AdminConsole user={currentUser} onLogout={handleLogout} showToast={showToast} />
+      {toast && <Toast toast={toast} />}
+    </>
+  );
   return (
     <>
       <Dashboard user={currentUser} requests={requests} budgets={budgets} pos={pos} poCounter={poCounter} notifications={notifications} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} saveNotifications={saveNotifications} addNotifications={addNotifications} showToast={showToast} onLogout={handleLogout} />
