@@ -109,6 +109,13 @@ export const STORAGE_KEY_USERS = "elecbits_fos_users_v1";
 export const STORAGE_KEY_ADMIN = "elecbits_fos_admin_v1";
 export const STORAGE_KEY_PENDING = "elecbits_fos_pending_signups_v1";
 
+// ============ ADMIN ============
+// The dedicated org-administrator account. Logs in by typing the bare username
+// "admin" (mapped to this email in signIn) with password admin@123. Its profile
+// uses role "Admin" and routes to the standalone Admin Console, not the finance
+// dashboard. Provisioned by `npm run seed` (scripts/seed.ts).
+export const ADMIN_EMAIL = "admin@elecbits.in";
+
 // ============ ROLES (admin-assignable) ============
 export const ASSIGNABLE_ROLES = [
   { id: "Employee", label: "Employee" },
