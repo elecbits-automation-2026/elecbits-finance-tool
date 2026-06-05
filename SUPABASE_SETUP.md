@@ -28,10 +28,18 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ## 2. Create the database schema
 
 In the dashboard → **SQL Editor**, paste and run the contents of
-[`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql).
+[`supabase/schema.sql`](supabase/schema.sql) — the consolidated, idempotent
+schema (equivalent to applying migrations `0001`–`0004` in order, and safe to
+re-run).
 
 This creates the tables (`profiles`, `requests`, `budgets`, `pos`,
-`notifications`, `pending_signups`, `app_meta`) and Row Level Security policies.
+`notifications`, `pending_signups`, `app_meta`, `roles`), the `is_admin()`
+function, and the Row Level Security policies.
+
+> Setting up an existing project incrementally instead? Apply the individual
+> files in `supabase/migrations/` in numeric order — they are the source-of-truth
+> history. The full data model and security design is documented in
+> [`docs/BACKEND_ARCHITECTURE.md`](docs/BACKEND_ARCHITECTURE.md).
 
 ## 3. Seed the 21 users + demo data
 
