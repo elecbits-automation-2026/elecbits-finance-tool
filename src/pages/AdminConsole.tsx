@@ -21,14 +21,21 @@ export function AdminConsole({ user, onLogout, showToast }) {
   async function load() {
     setLoading(true);
     try {
-      const [emps, rolesList, access] = await Promise.all([listEmployees(), listRoles(), getAccessPasswords()]);
+      const [emps, rolesList] = await Promise.all([listEmployees(), listRoles()]);
       setEmployees(emps);
       setRoles(rolesList);
-      setAccessMap(access);
     } catch (err) {
       if (showToast) showToast(`Could not load employees: ${err?.message || err}`, "error");
     } finally {
       setLoading(false);
+    }
+    // Access passwords are optional (they need the admin_access table). A
+    // failure here must never blank the employee list, so load them separately
+    // and swallow errors.
+    try {
+      setAccessMap(await getAccessPasswords());
+    } catch {
+      setAccessMap({});
     }
   }
 
