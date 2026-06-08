@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { XCircle, CheckCircle, Key } from "lucide-react";
 import { USERS } from "../constants";
-import { signUp } from "../lib/auth";
+import { signUp, requestReactivation } from "../lib/auth";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 
 const DEPARTMENTS = ["ODM", "Sales", "Box Build", "HR", "Product+Marketing", "Finance", "Management", "Executive"];
 
 // ============ LOGIN ============
 export function LoginPage({ onLogin }) {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "reactivate">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -47,6 +47,22 @@ export function LoginPage({ onLogin }) {
     setMode("signin");
   }
 
+  // Re-activation: an account the admin re-opened (status 'reactivating') sets a
+  // brand-new password here. It then moves to 'pending' for admin approval.
+  async function submitReactivate() {
+    setError("");
+    setNotice("");
+    if (!email) { setError("Please enter your email"); return; }
+    if (password.length < 6) { setError("Password must be at least 6 characters"); return; }
+    setBusy(true);
+    const r = await requestReactivation(email, password);
+    setBusy(false);
+    if (!r.success) { setError(r.error); return; }
+    setNotice("New password set — your account is now awaiting admin approval. You'll be able to sign in once an admin approves it.");
+    setPassword("");
+    setMode("signin");
+  }
+
   const groupedUsers = [
     { role: "CEO", emoji: "🎯", users: USERS.filter(u => u.role === "CEO") },
     { role: "VP", emoji: "⭐", users: USERS.filter(u => u.role === "VP") },
@@ -64,8 +80,8 @@ export function LoginPage({ onLogin }) {
             <ElecbitsLogo size="lg" showTagline />
             <p className="text-xs text-slate-500 mt-2">Budget · PO · Payment Management</p>
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">{mode === "signin" ? "Welcome back" : "Create your account"}</h2>
-          <p className="text-sm text-slate-600 mb-6">{mode === "signin" ? "Sign in with your @elecbits.in email" : "Sign up — your account will be reviewed by an admin before access is granted"}</p>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">{mode === "signin" ? "Welcome back" : mode === "signup" ? "Create your account" : "Reactivate your account"}</h2>
+          <p className="text-sm text-slate-600 mb-6">{mode === "signin" ? "Sign in with your @elecbits.in email" : mode === "signup" ? "Sign up — your account will be reviewed by an admin before access is granted" : "Set a new password for an account your admin has re-opened. It'll await admin approval before you can sign in."}</p>
           <div className="space-y-4">
             {mode === "signup" && (
               <>
@@ -88,22 +104,27 @@ export function LoginPage({ onLogin }) {
             )}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Organization Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (mode === "signin" ? submit() : submitSignup())} placeholder="your.name@elecbits.in" className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (mode === "signin" ? submit() : mode === "signup" ? submitSignup() : submitReactivate())} placeholder="your.name@elecbits.in" className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (mode === "signin" ? submit() : submitSignup())} placeholder={mode === "signin" ? "Enter password" : "At least 6 characters"} className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">{mode === "reactivate" ? "New Password" : "Password"}</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (mode === "signin" ? submit() : mode === "signup" ? submitSignup() : submitReactivate())} placeholder={mode === "signin" ? "Enter password" : "At least 6 characters"} className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             {error && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700 flex items-center gap-2"><XCircle className="w-4 h-4 flex-shrink-0" />{error}</div>}
             {notice && <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-700 flex items-center gap-2"><CheckCircle className="w-4 h-4 flex-shrink-0" />{notice}</div>}
             {mode === "signin" ? (
               <button onClick={submit} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2.5 rounded-lg">Sign In</button>
-            ) : (
+            ) : mode === "signup" ? (
               <button onClick={submitSignup} disabled={busy} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2.5 rounded-lg disabled:opacity-60">{busy ? "Creating account…" : "Create Account"}</button>
+            ) : (
+              <button onClick={submitReactivate} disabled={busy} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2.5 rounded-lg disabled:opacity-60">{busy ? "Setting password…" : "Set Password & Request Approval"}</button>
             )}
-            <div className="text-center text-xs text-slate-600">
+            <div className="text-center text-xs text-slate-600 space-y-1">
               {mode === "signin" ? (
-                <>New here? <button onClick={() => switchMode("signup")} className="text-blue-600 hover:text-blue-700 font-semibold">Create an account</button></>
+                <>
+                  <div>New here? <button onClick={() => switchMode("signup")} className="text-blue-600 hover:text-blue-700 font-semibold">Create an account</button></div>
+                  <div>Account re-opened by your admin? <button onClick={() => switchMode("reactivate")} className="text-blue-600 hover:text-blue-700 font-semibold">Reactivate account</button></div>
+                </>
               ) : (
                 <>Already have an account? <button onClick={() => switchMode("signin")} className="text-blue-600 hover:text-blue-700 font-semibold">Sign in</button></>
               )}

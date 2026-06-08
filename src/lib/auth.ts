@@ -42,16 +42,28 @@ export async function getCurrentUser() {
 }
 
 export async function signIn(email: string, password: string) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: resolveLoginEmail(email),
-    password,
-  });
-  if (error) return { success: false as const, error: error.message };
+  const resolved = resolveLoginEmail(email);
+  const { data, error } = await supabase.auth.signInWithPassword({ email: resolved, password });
+  if (error) {
+    // The sign-in failed (wrong password, or a deactivated user trying their old
+    // password — which no longer works because the admin reset it). The profile
+    // isn't readable yet, so ask the server for the account status to show a
+    // precise message instead of a raw "Invalid login credentials".
+    const { data: status } = await supabase.rpc("login_status", { p_email: resolved });
+    if (status === "deactivated") return { success: false as const, error: "Your account has been deactivated. Please contact your administrator." };
+    if (status === "reactivating") return { success: false as const, error: 'Your account is being re-activated. Use "Reactivate account" to set a new password, then wait for admin approval.' };
+    if (status === "disabled") return { success: false as const, error: "This account has been disabled." };
+    if (status === "pending") return { success: false as const, error: "Your account is awaiting admin approval." };
+    return { success: false as const, error: error.message };
+  }
 
   const profile = await profileForAuthId(data.user.id);
   if (!profile) return { success: false as const, error: "No profile found for this account." };
   if (profile.status === "pending") return { success: false as const, error: "Your account is awaiting admin approval." };
   if (profile.status === "disabled") return { success: false as const, error: "This account has been disabled." };
+  // 'deactivated' is intentionally allowed through: the real user's password was
+  // reset on deactivation, so a successful sign-in here can only be the admin
+  // using the generated access password to view this user's activity.
 
   return { success: true as const, user: toUser(profile) };
 }
@@ -181,10 +193,71 @@ export async function setEmployeeRole(authId: string, role: string) {
   return { success: true as const };
 }
 
-// Activate or deactivate an account. 'active' lets them sign in; 'disabled'
-// blocks sign-in (also used to activate a pending signup).
-export async function setEmployeeStatus(authId: string, status: "active" | "disabled") {
+// Low-level status setter used by the admin actions below:
+//   active      — approve a pending account so the user can sign in
+//   disabled    — reject / block an account
+//   deactivated — cancel an in-progress reactivation, back to deactivated
+//   reactivating — see openReactivation()
+export async function setEmployeeStatus(authId: string, status: "active" | "disabled" | "deactivated" | "reactivating") {
   const { error } = await supabase.from("profiles").update({ status }).eq("auth_id", authId);
   if (error) return { success: false as const, error: error.message };
   return { success: true as const };
+}
+
+// Open a deactivated account for reactivation. This does NOT sign the user back
+// in — it sets status='reactivating', which invites the user to set a brand-new
+// password from the login page ("Reactivate account"). After they do, the
+// account moves to 'pending' for the admin to give final approval.
+export async function openReactivation(authId: string) {
+  return setEmployeeStatus(authId, "reactivating");
+}
+
+// User-facing reactivation: a 'reactivating' account chooses a new password.
+// Routes the account to 'pending' (awaiting admin approval) and invalidates the
+// admin access password. The user isn't authenticated here, so this goes
+// through the request-reactivation edge function (service role).
+export async function requestReactivation(email: string, newPassword: string) {
+  const { error } = await supabase.functions.invoke("request-reactivation", {
+    body: { email: email.toLowerCase().trim(), newPassword },
+  });
+  if (error) {
+    let msg = error.message;
+    try {
+      const ctx = await (error as any).context?.json?.();
+      if (ctx?.error) msg = ctx.error;
+    } catch { /* keep the generic message */ }
+    return { success: false as const, error: msg };
+  }
+  return { success: true as const };
+}
+
+// Deactivate an account via the admin-deactivate edge function: generates a new
+// password, resets the user's auth password to it, sets status='deactivated',
+// and stores the password (admin-readable) so the admin can sign in AS the user
+// to review their activity. Returns the generated password on success.
+export async function deactivateEmployee(authId: string) {
+  const { data, error } = await supabase.functions.invoke("admin-deactivate", {
+    body: { targetAuthId: authId },
+  });
+  if (error) {
+    // functions.invoke surfaces non-2xx as a FunctionsHttpError whose response
+    // body carries our { error } message — unwrap it for a useful toast.
+    let msg = error.message;
+    try {
+      const ctx = await (error as any).context?.json?.();
+      if (ctx?.error) msg = ctx.error;
+    } catch { /* keep the generic message */ }
+    return { success: false as const, error: msg };
+  }
+  return { success: true as const, password: data.password as string };
+}
+
+// Fetch the stored access passwords for deactivated users, keyed by auth_id.
+// Only admins can read admin_access (RLS), so this returns {} for everyone else.
+export async function getAccessPasswords(): Promise<Record<string, string>> {
+  const { data, error } = await supabase.from("admin_access").select("auth_id, password");
+  if (error) throw error;
+  const map: Record<string, string> = {};
+  (data ?? []).forEach((r: any) => { map[r.auth_id] = r.password; });
+  return map;
 }

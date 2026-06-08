@@ -37,7 +37,7 @@ create table if not exists public.profiles (
   designation text,
   role        text not null default 'Employee',
   scope       text,
-  status      text not null default 'active',  -- active | pending | disabled
+  status      text not null default 'active',  -- active | pending | disabled | deactivated | reactivating
   created_at  timestamptz not null default now()
 );
 
@@ -224,6 +224,63 @@ create policy pending_update on public.pending_signups
 drop policy if exists roles_read on public.roles;
 create policy roles_read on public.roles
   for select to authenticated using (true);
+
+-- ============================================================================
+-- 0005: admin "deactivate & view"
+-- ----------------------------------------------------------------------------
+-- The admin can deactivate an employee; the `admin-deactivate` edge function
+-- resets that user's password, sets profiles.status='deactivated', and stores
+-- the new password here for the admin to sign in AS the user and review their
+-- activity. profiles.status gains a 'deactivated' value (text column — no
+-- constraint change needed). See supabase/functions/admin-deactivate/index.ts.
+-- ============================================================================
+
+-- admin_access: per-user access password, admin-readable only. Separate table
+-- (not a profiles column) so the app's `select *` on profiles never leaks it.
+create table if not exists public.admin_access (
+  auth_id    uuid primary key references public.profiles (auth_id) on delete cascade,
+  password   text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.admin_access enable row level security;
+
+drop policy if exists admin_access_admin on public.admin_access;
+create policy admin_access_admin on public.admin_access
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- login_status(email): account status for an email so the login page can tell a
+-- deactivated account from a wrong password after a failed sign-in. SECURITY
+-- DEFINER (reads profiles pre-auth); callable by anon.
+create or replace function public.login_status(p_email text)
+returns text
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select status from public.profiles
+  where email = lower(trim(p_email))
+  limit 1;
+$$;
+
+grant execute on function public.login_status(text) to anon, authenticated;
+
+-- ============================================================================
+-- 0006: user-driven re-activation
+-- ----------------------------------------------------------------------------
+-- Re-activating a deactivated account is a three-step handshake, so the user
+-- chooses their own password and the admin still has the final say:
+--   1. admin "re-opens" the account      → profiles.status = 'reactivating'
+--   2. user sets a NEW password (login    → request-reactivation edge function
+--      page → "Reactivate account")          sets the password, status='pending',
+--                                             and deletes the admin_access row
+--   3. admin approves the now-'pending'   → profiles.status = 'active'
+--      account in the Admin Console
+-- No DDL: 'reactivating' is just another value of the free-text status column,
+-- and login_status() already surfaces it to the pre-auth login page. See
+-- supabase/functions/request-reactivation/index.ts.
+-- ============================================================================
 
 -- ============================================================================
 -- NEXT STEP: run `npm run seed` to create the admin + 21 employee accounts and
