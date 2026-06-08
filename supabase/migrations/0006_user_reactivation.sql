@@ -1,0 +1,31 @@
+-- 0006: user-driven re-activation
+-- ----------------------------------------------------------------------------
+-- Turns "re-activate" into a three-step handshake so the user picks their own
+-- password and the admin keeps the final say:
+--
+--   1. admin re-opens a deactivated account   → profiles.status = 'reactivating'
+--      (a plain profiles UPDATE, allowed by the existing profiles_update_admin
+--       policy — no new policy needed)
+--
+--   2. the user sets a NEW password from the login page ("Reactivate account").
+--      They aren't signed in, so this goes through the `request-reactivation`
+--      edge function (service role), which ONLY proceeds when the account is in
+--      the 'reactivating' state. It sets the chosen password, moves the account
+--      to 'pending', and deletes the now-useless admin_access row.
+--      See supabase/functions/request-reactivation/index.ts.
+--
+--   3. the admin approves the 'pending' account in the Admin Console
+--      → profiles.status = 'active', and the user can sign in with their pw.
+--
+-- There is no DDL in this migration:
+--   * 'reactivating' is simply another value of the free-text profiles.status
+--     column (like 'deactivated' added in 0005) — no constraint change.
+--   * login_status() (0005) already returns any status to the pre-auth login
+--     page, so it can tell the user their account is mid-reactivation.
+--   * password resets / status flips happen via the service-role edge function,
+--     which bypasses RLS — no new policies required.
+--
+-- This file is intentionally a no-op marker that keeps the numbered migration
+-- history aligned with the deployed edge function and the app code.
+
+-- (no schema changes)

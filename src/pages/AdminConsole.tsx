@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { LogOut, ShieldCheck, RefreshCw, Mail, Clock, Search, Users, CheckCircle2, Ban } from "lucide-react";
-import { listEmployees, listRoles, setEmployeeRole, setEmployeeStatus } from "../lib/auth";
+import { LogOut, ShieldCheck, RefreshCw, Mail, Clock, Search, Users, CheckCircle2, Ban, KeyRound, Copy, Check, RotateCcw, Hourglass, X } from "lucide-react";
+import { listEmployees, listRoles, setEmployeeRole, setEmployeeStatus, openReactivation, deactivateEmployee, getAccessPasswords } from "../lib/auth";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 
 // ============ ADMIN CONSOLE ============
@@ -14,17 +14,31 @@ export function AdminConsole({ user, onLogout, showToast }) {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [query, setQuery] = useState("");
+  // authId -> access password the admin can use to sign in as that user.
+  const [accessMap, setAccessMap] = useState<Record<string, string>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     try {
-      const [emps, rolesList] = await Promise.all([listEmployees(), listRoles()]);
+      const [emps, rolesList, access] = await Promise.all([listEmployees(), listRoles(), getAccessPasswords()]);
       setEmployees(emps);
       setRoles(rolesList);
+      setAccessMap(access);
     } catch (err) {
       if (showToast) showToast(`Could not load employees: ${err?.message || err}`, "error");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function copyPassword(emp, pw) {
+    try {
+      await navigator.clipboard.writeText(pw);
+      setCopiedId(emp.authId);
+      setTimeout(() => setCopiedId((id) => (id === emp.authId ? null : id)), 1500);
+    } catch {
+      if (showToast) showToast("Could not copy to clipboard.", "error");
     }
   }
 
@@ -54,28 +68,70 @@ export function AdminConsole({ user, onLogout, showToast }) {
     if (showToast) showToast(`${emp.name} is now ${roleLabel[role] || role}.`, "success");
   }
 
-  async function toggleStatus(emp) {
-    const next = emp.status === "active" ? "disabled" : "active";
-    if (next === "disabled" && !window.confirm(`Deactivate ${emp.name} (${emp.email})? They won't be able to sign in.`)) return;
+  // Locally patch one employee's status after a successful action.
+  function patchStatus(emp, status, extra = {}) {
+    setEmployees((prev) => prev.map((e) => (e.authId === emp.authId ? { ...e, status, ...extra } : e)));
+  }
+
+  // Deactivate an active account: generate a password, reset the user's login,
+  // and store it so the admin can sign in as them to review their activity.
+  async function deactivate(emp) {
+    if (!window.confirm(`Deactivate ${emp.name} (${emp.email})?\n\nThis resets their password and signs them out. A new password will be generated and shown here so you can sign in as them to review their activity.`)) return;
     setBusyId(emp.authId);
-    const r = await setEmployeeStatus(emp.authId, next);
+    const r = await deactivateEmployee(emp.authId);
     setBusyId(null);
-    if (!r.success) { if (showToast) showToast(`Could not update status: ${r.error}`, "error"); return; }
-    setEmployees((prev) => prev.map((e) => (e.authId === emp.authId ? { ...e, status: next } : e)));
-    if (showToast) showToast(`${emp.name} ${next === "active" ? "activated" : "deactivated"}.`, next === "active" ? "success" : "info");
+    if (!r.success) { if (showToast) showToast(`Could not deactivate: ${r.error}`, "error"); return; }
+    patchStatus(emp, "deactivated");
+    setAccessMap((prev) => ({ ...prev, [emp.authId]: r.password }));
+    if (showToast) showToast(`${emp.name} deactivated. Access password is shown on their card.`, "info");
+  }
+
+  // Open a deactivated/disabled account for reactivation. The user must then set
+  // a new password from the login page before the admin approves (below).
+  async function reopen(emp) {
+    if (!window.confirm(`Re-activate ${emp.name}?\n\nThey'll be asked to set a NEW password from the login page ("Reactivate account"). It then comes back to you here to approve before they can sign in.`)) return;
+    setBusyId(emp.authId);
+    const r = await openReactivation(emp.authId);
+    setBusyId(null);
+    if (!r.success) { if (showToast) showToast(`Could not start re-activation: ${r.error}`, "error"); return; }
+    patchStatus(emp, "reactivating");
+    setAccessMap((prev) => { const n = { ...prev }; delete n[emp.authId]; return n; });
+    if (showToast) showToast(`${emp.name} can now set a new password from the login page. Approve it here after.`, "info");
+  }
+
+  // Cancel an in-progress reactivation, sending the account back to deactivated.
+  async function cancelReactivation(emp) {
+    setBusyId(emp.authId);
+    const r = await setEmployeeStatus(emp.authId, "deactivated");
+    setBusyId(null);
+    if (!r.success) { if (showToast) showToast(`Could not cancel: ${r.error}`, "error"); return; }
+    patchStatus(emp, "deactivated");
+    if (showToast) showToast(`Re-activation cancelled for ${emp.name}.`, "info");
+  }
+
+  // Approve a pending account (new signup OR a reactivation) → active.
+  async function approve(emp) {
+    setBusyId(emp.authId);
+    const r = await setEmployeeStatus(emp.authId, "active");
+    setBusyId(null);
+    if (!r.success) { if (showToast) showToast(`Could not approve: ${r.error}`, "error"); return; }
+    patchStatus(emp, "active");
+    if (showToast) showToast(`${emp.name} approved — they can sign in now.`, "success");
   }
 
   const statusStyles = {
     active: "bg-emerald-100 text-emerald-700",
     pending: "bg-amber-100 text-amber-700",
     disabled: "bg-red-100 text-red-700",
+    deactivated: "bg-orange-100 text-orange-700",
+    reactivating: "bg-sky-100 text-sky-700",
   };
 
   const counts = useMemo(() => ({
     total: employees.length,
     active: employees.filter((e) => e.status === "active").length,
     pending: employees.filter((e) => e.status === "pending").length,
-    disabled: employees.filter((e) => e.status === "disabled").length,
+    disabled: employees.filter((e) => e.status === "disabled" || e.status === "deactivated").length,
   }), [employees]);
 
   return (
@@ -136,7 +192,6 @@ export function AdminConsole({ user, onLogout, showToast }) {
           <div className="space-y-2.5">
             {filtered.map((emp) => {
               const busy = busyId === emp.authId;
-              const active = emp.status === "active";
               return (
                 <div key={emp.authId} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm grid md:grid-cols-[1fr_auto] gap-3 items-center">
                   <div className="min-w-0">
@@ -149,6 +204,23 @@ export function AdminConsole({ user, onLogout, showToast }) {
                       {emp.dept && <span>· {emp.dept}</span>}
                       {emp.createdAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(emp.createdAt).toLocaleDateString()}</span>}
                     </div>
+                    {emp.status === "deactivated" && accessMap[emp.authId] && (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-orange-600 flex-shrink-0" />
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-orange-700">Access password</span>
+                        <code className="text-xs font-mono font-semibold text-slate-900 bg-white border border-orange-200 rounded px-1.5 py-0.5 select-all">{accessMap[emp.authId]}</code>
+                        <button onClick={() => copyPassword(emp, accessMap[emp.authId])} className="text-orange-600 hover:text-orange-800" title="Copy password">
+                          {copiedId === emp.authId ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                        <span className="text-[10px] text-orange-600/80 w-full">Sign in with <span className="font-semibold">{emp.email}</span> and this password to view their activity.</span>
+                      </div>
+                    )}
+                    {emp.status === "reactivating" && (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5">
+                        <Hourglass className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
+                        <span className="text-[10px] text-sky-700">Waiting for <span className="font-semibold">{emp.name}</span> to set a new password from the login page. It'll return here as <span className="font-semibold">pending</span> for you to approve.</span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 justify-end flex-wrap">
                     <div>
@@ -159,9 +231,28 @@ export function AdminConsole({ user, onLogout, showToast }) {
                         {!roles.some((r) => r.key === emp.role) && <option value={emp.role}>{roleLabel[emp.role] || emp.role}</option>}
                       </select>
                     </div>
-                    <button onClick={() => toggleStatus(emp)} disabled={busy} className={`mt-4 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50 ${active ? "bg-red-50 hover:bg-red-100 border border-red-200 text-red-700" : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}>
-                      {active ? <><Ban className="w-3.5 h-3.5" />Deactivate</> : <><CheckCircle2 className="w-3.5 h-3.5" />Activate</>}
-                    </button>
+                    <div className="mt-4 flex items-center gap-1.5">
+                      {emp.status === "active" && (
+                        <button onClick={() => deactivate(emp)} disabled={busy} className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700">
+                          <Ban className="w-3.5 h-3.5" />Deactivate
+                        </button>
+                      )}
+                      {(emp.status === "deactivated" || emp.status === "disabled") && (
+                        <button onClick={() => reopen(emp)} disabled={busy} className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50 bg-sky-600 hover:bg-sky-700 text-white">
+                          <RotateCcw className="w-3.5 h-3.5" />Re-activate
+                        </button>
+                      )}
+                      {emp.status === "reactivating" && (
+                        <button onClick={() => cancelReactivation(emp)} disabled={busy} className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600">
+                          <X className="w-3.5 h-3.5" />Cancel
+                        </button>
+                      )}
+                      {emp.status === "pending" && (
+                        <button onClick={() => approve(emp)} disabled={busy} className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 text-white">
+                          <CheckCircle2 className="w-3.5 h-3.5" />Approve
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
