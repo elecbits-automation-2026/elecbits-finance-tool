@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LogOut, Bell, Shield, Clock, FileText, CheckSquare, PiggyBank, FileSignature, Plus, Target, TrendingUp, Building2, Users } from "lucide-react";
+import { LogOut, Bell, Shield, Clock, FileText, CheckSquare, PiggyBank, FileSignature, Plus, Target, TrendingUp, Building2, Users, Coins } from "lucide-react";
 import { canUserActOnRequest, getUserActionsOnRequest } from "../lib/access";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 import { NotificationPanel } from "../components/NotificationPanel";
@@ -15,6 +15,7 @@ import { BudgetView } from "./BudgetView";
 import { POListView } from "./POListView";
 import { ReportsView } from "./ReportsView";
 import { OrgOverview } from "./OrgOverview";
+import { RDAllocationView } from "./RDAllocationView";
 
 // ============ DASHBOARD ============
 export function Dashboard({ user, requests, budgets, pos, poCounter, notifications, saveRequests, saveBudgets, savePOs, savePOCounter, saveNotifications, addNotifications, showToast, onLogout }) {
@@ -99,6 +100,7 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
   tabs.push({ id: "new-payment", label: "Raise Payment", icon: Plus });
   tabs.push({ id: "budgets", label: "All Budgets", icon: Target });
   tabs.push({ id: "pos", label: "All POs", icon: FileSignature });
+  if (user.role === "SuperManager") tabs.push({ id: "rd-allocations", label: "R&D Allocations", icon: Coins });
   if (canViewReports) tabs.push({ id: "reports", label: "Reports", icon: TrendingUp });
   if (canViewOrg) {
     tabs.push({ id: "overview", label: "Org Overview", icon: Building2 });
@@ -117,10 +119,11 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
       {view === "new-budget" && <NewBudgetRequestForm {...commonProps} onSuccess={() => { showToast("Budget request submitted", "success"); setView("my-requests"); }} />}
       {view === "new-po" && <NewPORequestForm {...commonProps} onSuccess={() => { showToast("PO request submitted", "success"); setView("my-requests"); }} />}
       {view === "budgets" && <BudgetView {...commonProps} />}
+      {view === "rd-allocations" && <RDAllocationView {...commonProps} />}
       {view === "pos" && <POListView {...commonProps} />}
       {view === "reports" && <ReportsView {...commonProps} />}
       {view === "overview" && <OrgOverview {...commonProps} />}
-      {view === "all" && <RequestList {...commonProps} requests={[...requests, ...budgets, ...pos].sort((a, b) => new Date(b.createdDate || b.approvedDate) - new Date(a.createdDate || a.approvedDate))} requests_all={requests} budgets_all={budgets} pos_all={pos} emptyMessage="No requests yet." />}
+      {view === "all" && <RequestList {...commonProps} requests={[...requests, ...budgets.filter(b => b.type !== "RDCap"), ...pos].sort((a, b) => new Date(b.createdDate || b.approvedDate) - new Date(a.createdDate || a.approvedDate))} requests_all={requests} budgets_all={budgets} pos_all={pos} emptyMessage="No requests yet." />}
     </div>
   );
 }

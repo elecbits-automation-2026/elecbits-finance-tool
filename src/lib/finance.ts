@@ -22,6 +22,27 @@ export function getActiveBudgetForProject(budgets, projectId) {
   return budgets.find(b => b.type === "Project" && b.projectId === projectId && (b.status === "Active" || b.status === "Active Budget" || b.currentStage === "Active"));
 }
 
+// R&D monthly cap allocated by a SuperManager for a given dept + month.
+// Stored as a "RDCap" budget record (no separate table needed).
+export function getRDAllocation(budgets, dept, month) {
+  return budgets.find(b =>
+    b.type === "RDCap" && b.dept === dept && b.month === month &&
+    (b.status === "Active" || b.currentStage === "Active")
+  );
+}
+
+// Total R&D project budget consumed by a dept in a given month (counts the
+// approved/active R&D project budgets booked against that month).
+export function getRDUsageForDeptMonth(budgets, dept, month) {
+  return budgets
+    .filter(b =>
+      b.type === "Project" && b.projectType === "RD" && b.dept === dept &&
+      (b.status === "Active" || b.currentStage === "Active") &&
+      ((b.approvedDate || "").slice(0, 7) === month || (b.createdDate || "").slice(0, 7) === month)
+    )
+    .reduce((s, b) => s + (b.amountINR || b.amount || 0), 0);
+}
+
 export function getActiveMonthlyBudget(budgets, dept, category, month) {
   return budgets.find(b =>
     b.type === "Monthly" && b.dept === dept && b.category === category && b.month === month &&

@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { PiggyBank, Briefcase, Target, TrendingUp, Coins, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { EXPENSE_TYPES, NON_PROJECT_DEPTS, MAX_BUDGET_RATIO, RD_MONTHLY_CAP, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { EXPENSE_TYPES, NON_PROJECT_DEPTS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD, USERS } from "../constants";
 import { isHODLevel } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
+import { getRDAllocation } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
 import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
 
 // ============ NEW BUDGET FORM ============
-export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, onSuccess }) {
+export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, addNotifications, showToast, onSuccess }) {
   const initialBudgetType = NON_PROJECT_DEPTS.includes(user.dept) ? "Monthly" : "Project";
   const [budgetType, setBudgetType] = useState(initialBudgetType);
   const [projectType, setProjectType] = useState(null);
@@ -28,9 +29,29 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, onS
   const maxAllowedBudget = clientOrderINR * MAX_BUDGET_RATIO;
 
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const rdThisMonth = budgets.filter(b => b.type === "Project" && b.projectType === "RD" && (b.status === "Active" || b.currentStage === "Active") && (b.approvedDate?.slice(0, 7) === currentMonth || b.createdDate?.slice(0, 7) === currentMonth));
+  const rdThisMonth = budgets.filter(b => b.type === "Project" && b.projectType === "RD" && b.dept === user.dept && (b.status === "Active" || b.currentStage === "Active") && (b.approvedDate?.slice(0, 7) === currentMonth || b.createdDate?.slice(0, 7) === currentMonth));
   const rdUsedThisMonth = rdThisMonth.reduce((s, b) => s + b.amountINR, 0);
-  const rdAvailableThisMonth = Math.max(0, RD_MONTHLY_CAP - rdUsedThisMonth);
+  // Cap comes from the SuperManager's monthly allocation for this dept+month.
+  // No allocation => no cap available; user must request one (notifies SuperManagers).
+  const rdAllocation = getRDAllocation(budgets, user.dept, currentMonth);
+  const rdAllocated = rdAllocation ? rdAllocation.amountINR : null;
+  const rdAvailableThisMonth = rdAllocated != null ? Math.max(0, rdAllocated - rdUsedThisMonth) : 0;
+  const [allocRequested, setAllocRequested] = useState(false);
+
+  async function requestRDAllocation() {
+    const now = new Date().toISOString();
+    const supers = USERS.filter(u => u.role === "SuperManager");
+    const notifs = supers.map((s, i) => ({
+      id: "N-" + Date.now() + "-rdalloc-" + i,
+      toUserId: s.id,
+      title: "R&D Budget Allocation Requested",
+      message: `${user.name} (${user.dept}) requests an R&D budget allocation for ${currentMonth}.`,
+      at: now, read: false, requestId: null,
+    }));
+    if (addNotifications) await addNotifications(notifs);
+    setAllocRequested(true);
+    showToast?.("Allocation request sent to management", "success");
+  }
 
   const canRaiseProject = !NON_PROJECT_DEPTS.includes(user.dept) && (user.role === "Employee" || isHODLevel(user) || user.role === "DeptApprover");
   const canRaiseMonthly = isHODLevel(user);
@@ -72,7 +93,8 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, onS
         if (!form.rdType) return setErr("R&D Type required");
         if (!form.justification.trim()) return setErr("Justification required");
         if (!form.expectedOutcome.trim()) return setErr("Expected Outcome required");
-        if (amountINR > rdAvailableThisMonth) return setErr(`Exceeds monthly R&D cap. Available: ₹${(rdAvailableThisMonth / 1000).toFixed(1)}K. Use Extension instead.`);
+        if (rdAllocated == null) return setErr(`No R&D budget allocated for ${user.dept} for ${currentMonth}. Request an allocation from management below.`);
+        if (amountINR > rdAvailableThisMonth) return setErr(`Exceeds allocated R&D budget. Available: ₹${(rdAvailableThisMonth / 1000).toFixed(1)}K. Use Extension instead.`);
       }
     } else if (budgetType === "Monthly") {
       if (!form.category) return setErr("Category required");
@@ -161,7 +183,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, onS
               <div className="flex items-center gap-2 mb-2"><div className="w-10 h-10 bg-fuchsia-100 text-fuchsia-600 rounded-lg flex items-center justify-center"><Target className="w-5 h-5" /></div><div className="font-bold">Internal / R&D</div></div>
               <div className="text-xs text-slate-600 space-y-1">
                 <div>✓ ODM only</div>
-                <div>✓ Monthly cap: ₹{(RD_MONTHLY_CAP / 100000).toFixed(1)}L (avail: ₹{(rdAvailableThisMonth / 1000).toFixed(1)}K)</div>
+                <div>{rdAllocated != null ? `✓ Allocated this month: ₹${(rdAllocated / 1000).toFixed(0)}K (avail: ₹${(rdAvailableThisMonth / 1000).toFixed(1)}K)` : "⚠ No budget allocated this month"}</div>
               </div>
             </button>
           </div>
@@ -201,10 +223,20 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, onS
 
         {budgetType === "Project" && projectType === "RD" && (
           <>
-            <div className={`rounded-lg p-3 border ${rdUsedThisMonth >= RD_MONTHLY_CAP ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}>
-              <div className="flex justify-between text-xs font-semibold"><span>R&D Cap ({currentMonth})</span><span>₹{(rdUsedThisMonth / 1000).toFixed(1)}K / ₹{(RD_MONTHLY_CAP / 1000).toFixed(0)}K</span></div>
-              <div className="text-xs">Available: <strong>₹{(rdAvailableThisMonth / 1000).toFixed(1)}K</strong></div>
-            </div>
+            {rdAllocated != null ? (
+              <div className={`rounded-lg p-3 border ${rdUsedThisMonth >= rdAllocated ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}>
+                <div className="flex justify-between text-xs font-semibold"><span>R&D Budget ({currentMonth})</span><span>₹{(rdUsedThisMonth / 1000).toFixed(1)}K / ₹{(rdAllocated / 1000).toFixed(0)}K allocated</span></div>
+                <div className="text-xs">Available: <strong>₹{(rdAvailableThisMonth / 1000).toFixed(1)}K</strong></div>
+              </div>
+            ) : (
+              <div className="rounded-lg p-3 border bg-amber-50 border-amber-200">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-900 mb-1"><AlertTriangle className="w-4 h-4" />No R&D budget allocated for {user.dept} ({currentMonth})</div>
+                <div className="text-xs text-amber-800 mb-2">Management has not set an R&D budget for your department this month. Request one to proceed.</div>
+                <button type="button" onClick={requestRDAllocation} disabled={allocRequested} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:bg-slate-400 text-white">
+                  {allocRequested ? "Request sent ✓" : "Request allocation from management"}
+                </button>
+              </div>
+            )}
             <div className="grid md:grid-cols-2 gap-4">
               <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Project ID *</label><input value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono" /></div>
               <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Project Name *</label><input value={form.projectName} onChange={(e) => setForm({ ...form, projectName: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
