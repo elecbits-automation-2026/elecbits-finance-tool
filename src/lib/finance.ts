@@ -31,6 +31,14 @@ export function getRDAllocation(budgets, dept, month) {
   );
 }
 
+// Open R&D allocation requests raised by departments (shown to SuperManagers
+// on the R&D Allocations page so a request isn't missed in notifications).
+export function getRDAllocationRequests(budgets) {
+  return budgets
+    .filter(b => b.type === "RDCapRequest" && b.status === "Open")
+    .sort((a, b) => (b.requestedAt || "").localeCompare(a.requestedAt || ""));
+}
+
 // Total R&D project budget consumed by a dept in a given month (counts the
 // approved/active R&D project budgets booked against that month).
 export function getRDUsageForDeptMonth(budgets, dept, month) {

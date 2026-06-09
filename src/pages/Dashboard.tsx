@@ -81,7 +81,7 @@ export function Dashboard({ user, requests, budgets, pos, poCounter, notificatio
 
 // ============ UNIFIED DASHBOARD ============
 function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCounter, saveRequests, saveBudgets, savePOs, savePOCounter, inbox, addNotifications, showToast }) {
-  const myItems = [...requests, ...budgets, ...pos].filter(r => r.requesterId === user.id);
+  const myItems = [...requests, ...budgets, ...pos].filter(r => r.requesterId === user.id && r.type !== "RDCapRequest");
   const canViewOrg = ["CEO", "VP", "SuperManager", "FinanceHead", "Accountant"].includes(user.role);
   const canSeeMyApprovals = ["DeptApprover", "BoxBuildMidApprover", "VP", "CEO", "FinanceHead", "SuperManager"].includes(user.role);
   const canViewReports = ["FinanceHead", "CEO", "VP", "SuperManager"].includes(user.role);
@@ -123,7 +123,7 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
       {view === "pos" && <POListView {...commonProps} />}
       {view === "reports" && <ReportsView {...commonProps} />}
       {view === "overview" && <OrgOverview {...commonProps} />}
-      {view === "all" && <RequestList {...commonProps} requests={[...requests, ...budgets.filter(b => b.type !== "RDCap"), ...pos].sort((a, b) => new Date(b.createdDate || b.approvedDate) - new Date(a.createdDate || a.approvedDate))} requests_all={requests} budgets_all={budgets} pos_all={pos} emptyMessage="No requests yet." />}
+      {view === "all" && <RequestList {...commonProps} requests={[...requests, ...budgets.filter(b => b.type !== "RDCap" && b.type !== "RDCapRequest"), ...pos].sort((a, b) => new Date(b.createdDate || b.approvedDate) - new Date(a.createdDate || a.approvedDate))} requests_all={requests} budgets_all={budgets} pos_all={pos} emptyMessage="No requests yet." />}
     </div>
   );
 }
