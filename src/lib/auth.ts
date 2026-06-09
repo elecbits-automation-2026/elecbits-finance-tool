@@ -106,8 +106,9 @@ export async function signUp(opts: { email: string; password: string; name: stri
 }
 
 // ---------------------------------------------------------------------------
-// Admin: review & action self-service signups (SuperManager / CEO only — the
-// profiles_update_admin RLS policy enforces this server-side).
+// Admin: review & action self-service signups (dedicated 'Admin' account only —
+// the profiles_update_admin RLS policy enforces this server-side via is_admin()).
+// These run from the Admin Console; the finance dashboard no longer exposes them.
 // ---------------------------------------------------------------------------
 
 // List profiles still awaiting admin approval, oldest first.
@@ -164,8 +165,8 @@ export async function rejectSignup(authId: string, email: string) {
 
 // ---------------------------------------------------------------------------
 // Admin Console: manage every employee — assign roles, activate/deactivate.
-// (Admin / SuperManager / CEO only — enforced server-side by the
-// profiles_update_admin RLS policy.)
+// (Dedicated 'Admin' account only — enforced server-side by the
+// profiles_update_admin RLS policy via is_admin().)
 // ---------------------------------------------------------------------------
 
 // The 7 assignable role-groups (reference catalog), oldest-first by rank.

@@ -1,13 +1,16 @@
 -- ============================================================================
 -- Elecbits Finance Tool — consolidated database schema
 -- ----------------------------------------------------------------------------
--- This is a single-file, idempotent merge of migrations 0001–0004, intended for
+-- This is a single-file, idempotent merge of migrations 0001–0007, intended for
 -- bootstrapping a fresh Supabase project in one paste. Run it in the Supabase
 -- SQL Editor (or `supabase db push`). It is equivalent to applying, in order:
 --   0001_init.sql               core tables + RLS
 --   0002_profiles_self_insert   signup self-insert policy
 --   0003_profiles_admin_update  is_admin() + admin update policy
 --   0004_roles_and_admin        roles catalog + 'Admin' role in is_admin()
+--   0005_admin_access_and_deactivate  admin "deactivate & view" + admin_access
+--   0006_user_reactivation      user-driven re-activation handshake
+--   0007_admin_only_user_management   is_admin() narrowed to 'Admin' only
 --
 -- The migration files remain the source of truth for history; keep this file in
 -- sync when you add a migration. The dedicated admin auth user and the 21
@@ -145,9 +148,12 @@ on conflict (id) do update
 -- FUNCTIONS
 -- ============================================================================
 
--- is_admin(): true if the caller is an administrator. Reads the caller's own
--- role from profiles; done in a SECURITY DEFINER function so it bypasses RLS
--- (reading profiles inside a profiles policy would otherwise recurse infinitely).
+-- is_admin(): true if the caller is the dedicated administrator. Account
+-- management (assign roles, deactivate/reactivate, read access passwords) is
+-- reserved for the 'Admin' role ONLY — SuperManager ("Special Access") and CEO
+-- are finance-workflow roles and intentionally have no account-admin powers.
+-- Reads the caller's own role from profiles in a SECURITY DEFINER function so it
+-- bypasses RLS (reading profiles inside a profiles policy would recurse).
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -158,7 +164,7 @@ as $$
   select exists (
     select 1 from public.profiles
     where auth_id = auth.uid()
-      and role in ('SuperManager', 'CEO', 'Admin')
+      and role = 'Admin'
   );
 $$;
 
