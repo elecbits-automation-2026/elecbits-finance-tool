@@ -49,6 +49,15 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
       at: now, read: false, requestId: null,
     }));
     if (addNotifications) await addNotifications(notifs);
+    // Persist the request so it surfaces as a card on the R&D Allocations page
+    // (notifications can be missed/dismissed). One open request per dept+month.
+    const reqId = `RDCAPREQ-${user.dept}-${currentMonth}`;
+    const reqRecord = {
+      id: reqId, kind: "RDCapRequest", type: "RDCapRequest",
+      dept: user.dept, month: currentMonth, status: "Open",
+      requesterId: user.id, requesterName: user.name, requestedAt: now,
+    };
+    await saveBudgets([reqRecord, ...budgets.filter(b => b.id !== reqId)]);
     setAllocRequested(true);
     showToast?.("Allocation request sent to management", "success");
   }

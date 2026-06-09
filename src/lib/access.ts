@@ -27,6 +27,8 @@ export function isHODLevel(user) {
 }
 
 export function canUserActOnRequest(user, request) {
+  // R&D cap allocations and allocation requests are config, not workflow items.
+  if (request.type === "RDCap" || request.type === "RDCapRequest") return false;
   if (["Paid", "Rejected", "Cancelled", "Active", "Approved", "Closed"].includes(request.status)) return false;
   // PO at SuperManagerApproval: only SuperManagers (actual approval stage)
   if (request.kind === "PO" && request.currentStage === "SuperManagerApproval") {
