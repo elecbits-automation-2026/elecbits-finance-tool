@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LogOut, Bell, Shield, Clock, FileText, CheckSquare, PiggyBank, FileSignature, Plus, Target, TrendingUp, Building2, Users, UserCog } from "lucide-react";
+import { LogOut, Bell, Shield, Clock, FileText, CheckSquare, PiggyBank, FileSignature, Plus, Target, TrendingUp, Building2, Users } from "lucide-react";
 import { canUserActOnRequest, getUserActionsOnRequest } from "../lib/access";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 import { NotificationPanel } from "../components/NotificationPanel";
@@ -15,7 +15,6 @@ import { BudgetView } from "./BudgetView";
 import { POListView } from "./POListView";
 import { ReportsView } from "./ReportsView";
 import { OrgOverview } from "./OrgOverview";
-import { AdminUsersView } from "./AdminUsersView";
 
 // ============ DASHBOARD ============
 export function Dashboard({ user, requests, budgets, pos, poCounter, notifications, saveRequests, saveBudgets, savePOs, savePOCounter, saveNotifications, addNotifications, showToast, onLogout }) {
@@ -85,7 +84,6 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
   const canViewOrg = ["CEO", "VP", "SuperManager", "FinanceHead", "Accountant"].includes(user.role);
   const canSeeMyApprovals = ["DeptApprover", "BoxBuildMidApprover", "VP", "CEO", "FinanceHead", "SuperManager"].includes(user.role);
   const canViewReports = ["FinanceHead", "CEO", "VP", "SuperManager"].includes(user.role);
-  const canManageUsers = ["SuperManager", "CEO"].includes(user.role);
 
   const myApprovalItems = [...requests, ...budgets, ...pos].filter(r => {
     const a = getUserActionsOnRequest(user, r);
@@ -106,7 +104,6 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
     tabs.push({ id: "overview", label: "Org Overview", icon: Building2 });
     tabs.push({ id: "all", label: "All Requests", icon: Users });
   }
-  if (canManageUsers) tabs.push({ id: "admin-users", label: "Pending Signups", icon: UserCog });
 
   const commonProps = { user, requests, budgets, pos, poCounter, saveRequests, saveBudgets, savePOs, savePOCounter, addNotifications, showToast };
 
@@ -123,7 +120,6 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
       {view === "pos" && <POListView {...commonProps} />}
       {view === "reports" && <ReportsView {...commonProps} />}
       {view === "overview" && <OrgOverview {...commonProps} />}
-      {view === "admin-users" && canManageUsers && <AdminUsersView {...commonProps} />}
       {view === "all" && <RequestList {...commonProps} requests={[...requests, ...budgets, ...pos].sort((a, b) => new Date(b.createdDate || b.approvedDate) - new Date(a.createdDate || a.approvedDate))} requests_all={requests} budgets_all={budgets} pos_all={pos} emptyMessage="No requests yet." />}
     </div>
   );
