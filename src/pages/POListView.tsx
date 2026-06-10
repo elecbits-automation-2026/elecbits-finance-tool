@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FileSignature, Edit3, Eye, Paperclip, History, CheckCircle2, XCircle, Ban } from "lucide-react";
 import { CURRENCIES } from "../constants";
 import { getPOUsage, getPOAvailable } from "../lib/finance";
+import { isReadOnly } from "../lib/access";
 import { AttachmentViewer } from "../components/AttachmentViewer";
 import { NewPORequestForm } from "../forms/NewPORequestForm";
 
@@ -36,13 +37,16 @@ export function POListView({ user, pos, requests, budgets, savePOs, savePOCounte
     setCloseTarget(null);
   }
 
+  // Read-only viewers only see their own department's POs.
+  const scopedPos = isReadOnly(user) ? pos.filter(p => p.dept === user.dept) : pos;
+
   // Only show actual PO records (POCreate) — edits/cancels are tracked elsewhere
-  const allPOs = pos.filter(p => p.type === "POCreate");
+  const allPOs = scopedPos.filter(p => p.type === "POCreate");
   const approved = allPOs.filter(p => p.status === "Approved" || p.currentStage === "Approved");
-  const pending = pos.filter(p => !["Approved", "Closed", "Cancelled", "Rejected"].includes(p.status));
+  const pending = scopedPos.filter(p => !["Approved", "Closed", "Cancelled", "Rejected"].includes(p.status));
   const closed = allPOs.filter(p => p.status === "Closed");
   const cancelled = allPOs.filter(p => p.status === "Cancelled");
-  const rejected = pos.filter(p => p.status === "Rejected");
+  const rejected = scopedPos.filter(p => p.status === "Rejected");
 
   const list = tab === "approved" ? approved : tab === "pending" ? pending : tab === "closed" ? closed : tab === "cancelled" ? cancelled : rejected;
 
@@ -76,8 +80,8 @@ function POCard({ po, requests, pos, user, onEdit, onCancel, onClose: onCloseMan
   const isApproved = po.status === "Approved" || po.currentStage === "Approved";
   const isCancelled = po.status === "Cancelled" || po.currentStage === "Cancelled";
   const isClosed = po.status === "Closed" || po.currentStage === "Closed";
-  const canEdit = isApproved && !isCancelled;
-  const canCancel = isApproved && !isCancelled;
+  const canEdit = isApproved && !isCancelled && !isReadOnly(user);
+  const canCancel = isApproved && !isCancelled && !isReadOnly(user);
   const canManualClose = isApproved && !isCancelled && user.role === "FinanceHead" && onCloseManually;
   const pendingEdits = pos.filter(p => p.type === "POEdit" && p.editingPOId === po.id && !["Approved", "Rejected", "Cancelled"].includes(p.status));
   const statusColor = isApproved ? "emerald" : isCancelled ? "slate" : isClosed ? "slate" : po.status === "Rejected" ? "red" : "amber";

@@ -99,6 +99,7 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
   const tabs = [];
   if (readOnly) {
     tabs.push({ id: "budgets", label: "Dept Budgets", icon: Target });
+    tabs.push({ id: "pos", label: "Dept POs", icon: FileSignature });
   } else {
     if (inbox.length > 0 || user.role !== "Employee") tabs.push({ id: "inbox", label: "Action - Need to do", icon: Clock, count: inbox.length, highlight: inbox.length > 0 });
     tabs.push({ id: "my-requests", label: "My Requests", icon: FileText, count: myItems.length });
