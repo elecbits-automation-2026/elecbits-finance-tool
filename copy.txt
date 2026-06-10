@@ -176,9 +176,62 @@ Don't migrate all of db.ts at once. Strangle it one entity at a time:
   3. Verify, then move the next entity. Keep RLS on the whole time as a net.
 
 --------------------------------------------------------------------------------
-7. NEXT STEP OFFERED
+7. PROPOSED FOLDER LAYOUT (for the future — DO NOT build yet)
 --------------------------------------------------------------------------------
-Scaffold the server/ folder (steps 1–5) + set up the shared logic folder so there
-is a running GET /api/requests to build on — wired against the existing schema and
-env vars, without touching the frontend yet.
+A separate top-level server/ folder, alongside src/. The .ts files would reuse
+the existing pure-TS logic in src/lib/* (no duplication). Sketch:
+
+  server/
+  ├── README.md          explains the layout + how to build it later
+  ├── package.json       deps: express, cors, @supabase/supabase-js,
+  │                            tsx, typescript, @types/*
+  ├── tsconfig.json      TS config; `include` also pulls in the shared
+  │                      src/lib/* files so they type-check
+  ├── index.ts           Express app + route wiring. cors() + json(),
+  │                      public GET /api/health, then app.use("/api",
+  │                      requireUser) and mount the routers below it.
+  │                      Listen on process.env.PORT || 4000.
+  ├── auth.ts            requireUser(req,res,next) middleware: read Bearer
+  │                      token -> supabase.auth.getUser() -> load profiles
+  │                      row -> reject if status !== "active" -> map to the
+  │                      user shape access.ts expects (mirror toUser() in
+  │                      src/lib/auth.ts) -> attach to req.user. Also export
+  │                      an AuthedRequest type.
+  ├── db.ts              Supabase client using SUPABASE_URL (fallback
+  │                      VITE_SUPABASE_URL) + SUPABASE_SERVICE_ROLE_KEY.
+  │                      service_role BYPASSES RLS — server-only, never ship
+  │                      to the browser.
+  ├── store.ts           fetchAll(table): select the `data` jsonb column and
+  │                      return the app objects (mirrors unwrap()/fetchAll()
+  │                      in src/lib/db.ts). Add upsert/prune write helpers
+  │                      here when mutations land.
+  └── routes/
+      ├── requests.ts    GET /api/requests -> fetchAll("requests") then
+      │                  filterByAccess(user, all). Later PATCH /:id:
+      │                  load row -> canUserSeeRequest() guard -> apply a
+      │                  workflow.ts transition -> upsert.
+      ├── budgets.ts     GET /api/budgets -> filterByAccess(user, all)
+      └── pos.ts         GET /api/pos     -> filterByAccess(user, all)
+
+Reuse, don't copy: routes import filterByAccess / canUserSeeRequest from
+src/lib/access.ts, transitions from src/lib/workflow.ts, math from
+src/lib/finance.ts. One source of truth shared by frontend and backend.
+
+Planned endpoints:
+  GET /api/health   (no auth)  -> { ok: true }
+  GET /api/me       (auth)     -> the authed user
+  GET /api/requests (auth)     -> requests the user may see
+  GET /api/budgets  (auth)     -> budgets the user may see
+  GET /api/pos      (auth)     -> POs the user may see
+
+To run later: cd server && npm install && npm run dev (reuses ../.env.local;
+tsx watch on http://localhost:4000). Then migrate the frontend off direct
+Supabase one entity at a time, keeping RLS on as a backstop.
+
+--------------------------------------------------------------------------------
+8. NEXT STEP (when you decide to build)
+--------------------------------------------------------------------------------
+Scaffold the server/ folder per section 7 + reuse the shared src/lib logic so
+there is a running GET /api/requests to build on — wired against the existing
+schema and env vars, without touching the frontend yet.
 ================================================================================
