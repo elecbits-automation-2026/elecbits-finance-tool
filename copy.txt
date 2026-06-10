@@ -1,0 +1,184 @@
+================================================================================
+ADDING A BACKEND TO elecbits-finance-tool — FINDINGS & PLAN
+Recorded: 2026-06-10
+================================================================================
+
+--------------------------------------------------------------------------------
+0. KEY REALIZATION: YOU ALREADY HAVE A BACKEND
+--------------------------------------------------------------------------------
+The app is React + Vite + TypeScript talking directly to Supabase, which is a
+Backend-as-a-Service. It already provides:
+
+  Backend job          | Who does it now
+  ---------------------|----------------------------------------------------------
+  Database             | Supabase Postgres (supabase/schema.sql) — tables:
+                       |   requests, budgets, pos, notifications, profiles, etc.
+  Authentication       | Supabase Auth (src/lib/auth.ts)
+  Authorization        | Postgres Row-Level Security policies (supabase/migrations/*)
+  Custom server code   | Supabase Edge Functions (TypeScript/Deno) — already 3:
+                       |   admin-delete-user, admin-deactivate, request-reactivation
+
+Browser calls Supabase directly via src/lib/db.ts + src/lib/supabase.ts.
+This is a legitimate, production-grade architecture.
+
+--------------------------------------------------------------------------------
+1. DECISION (from user)
+--------------------------------------------------------------------------------
+Goal     : Build a REAL API server between the React app and the database.
+Language : User knows Java but has NO preference for this project — pick best fit.
+
+--------------------------------------------------------------------------------
+2. RECOMMENDATION: Node.js + Express + TypeScript
+--------------------------------------------------------------------------------
+Best fit for THIS project (not close), even though user knows Java:
+
+  1. REUSE EXISTING LOGIC AS-IS. src/lib/access.ts, workflow.ts, finance.ts are
+     pure TypeScript with ZERO browser dependencies (only import constants).
+     Java would mean rewriting all of it + maintaining two diverging copies.
+  2. Shared types — frontend & backend speak the same Request/Budget/PO shapes.
+  3. Same Supabase SDK (@supabase/supabase-js) already in use; same language as
+     existing Edge Functions.
+  4. One language / one toolchain (npm, tsc, Vite) for the whole repo.
+
+Framework: Express (simplest to learn) or Fastify (faster, built-in validation).
+Java/Spring Boot would only make sense for a greenfield project — here it buys
+nothing and costs a full rewrite of working code.
+
+--------------------------------------------------------------------------------
+3. TARGET ARCHITECTURE
+--------------------------------------------------------------------------------
+NOW:    Browser -> Supabase            (anon key + RLS policies guard everything)
+AFTER:  Browser -> Node API -> Supabase Postgres
+
+  src/  (React frontend, unchanged UI)
+    └─ lib/api.ts        ← NEW: calls YOUR backend instead of Supabase directly
+  server/  (NEW backend)
+    ├─ index.ts          ← Express app
+    ├─ auth.ts           ← verify Supabase JWT, load the user
+    ├─ routes/
+    │   ├─ requests.ts
+    │   ├─ budgets.ts
+    │   └─ pos.ts
+    ├─ db.ts             ← Supabase client (service_role key, server-only)
+    └─ shared/           ← reuse access.ts / workflow.ts / finance.ts here
+
+--------------------------------------------------------------------------------
+4. THE ONE THING YOU MUST GET RIGHT: AUTH / RLS
+--------------------------------------------------------------------------------
+Security currently lives in Postgres Row-Level Security (RLS) policies.
+The moment the backend uses the SERVICE_ROLE key, it BYPASSES ALL RLS (god-mode).
+=> The backend becomes 100% responsible for "can this user see/do this?"
+
+Good news: that logic already exists in src/lib/access.ts
+  (canUserSeeRequest, filterByAccess, getUserActionsOnRequest).
+Call those IN THE BACKEND on every request. KEEP the RLS policies too as a
+defense-in-depth backstop.
+
+RULE: every API route must (1) verify caller identity, then (2) run access.ts
+checks BEFORE reading/writing.
+
+NOTE: the service_role key must NEVER reach the browser. Server env var only —
+never VITE_-prefixed. It already exists in .env.local as SUPABASE_SERVICE_ROLE_KEY.
+
+--------------------------------------------------------------------------------
+5. STEP-BY-STEP
+--------------------------------------------------------------------------------
+STEP 1 — Create backend folder & init
+  mkdir server && cd server
+  npm init -y
+  npm install express cors @supabase/supabase-js
+  npm install -D typescript tsx @types/express @types/cors @types/node
+  npx tsc --init
+
+STEP 2 — Server-side Supabase client (server/db.ts), uses service_role key:
+  import { createClient } from "@supabase/supabase-js";
+  export const db = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!   // bypasses RLS — server only
+  );
+
+STEP 3 — Auth middleware (server/auth.ts): verify JWT from browser, load profile
+  import { db } from "./db";
+  export async function requireUser(req, res, next) {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "no token" });
+    const { data: { user }, error } = await db.auth.getUser(token);
+    if (error || !user) return res.status(401).json({ error: "invalid token" });
+    const { data: profile } = await db.from("profiles")
+      .select("*").eq("auth_id", user.id).maybeSingle();
+    req.user = profile;            // shape access.ts expects
+    next();
+  }
+
+STEP 4 — A route reusing existing logic (server/routes/requests.ts)
+  import { Router } from "express";
+  import { db } from "../db";
+  import { filterByAccess, canUserSeeRequest } from "../shared/access";
+  const r = Router();
+
+  // GET /api/requests — only the ones this user may see
+  r.get("/", async (req, res) => {
+    const { data } = await db.from("requests").select("data");
+    const all = (data ?? []).map(row => row.data);
+    res.json(filterByAccess(req.user, all));   // existing function
+  });
+
+  // PATCH /api/requests/:id — guard before mutating
+  r.patch("/:id", async (req, res) => {
+    const { data } = await db.from("requests").select("data").eq("id", req.params.id).single();
+    if (!canUserSeeRequest(req.user, data.data)) return res.status(403).json({ error: "forbidden" });
+    // ...apply workflow transition (reuse server/shared/workflow.ts), then upsert
+  });
+  export default r;
+
+STEP 5 — Wire it together (server/index.ts)
+  import express from "express";
+  import cors from "cors";
+  import { requireUser } from "./auth";
+  import requests from "./routes/requests";
+  const app = express();
+  app.use(cors());                 // tighten to frontend origin in prod
+  app.use(express.json());
+  app.use("/api", requireUser);    // everything under /api needs a valid user
+  app.use("/api/requests", requests);
+  app.listen(4000, () => console.log("API on http://localhost:4000"));
+  // Run: npx tsx watch index.ts
+
+STEP 6 — Share logic, don't copy it
+  Move access.ts, workflow.ts, finance.ts, constants.ts to a shared spot both
+  sides import (top-level shared/ folder, or a small npm workspace). One copy,
+  no drift.
+
+STEP 7 — Point the frontend at the API (src/lib/api.ts)
+  Replace DIRECT Supabase data calls in src/lib/db.ts with fetch to backend,
+  attaching the user's token:
+    const token = (await supabase.auth.getSession()).data.session?.access_token;
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/requests`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  Keep src/lib/supabase.ts ONLY for auth/login (getting the token). All DATA now
+  flows through the API.
+
+STEP 8 — Deploy
+  Backend  -> Railway, Render, Fly.io, or a Supabase Edge Function.
+             Set SUPABASE_SERVICE_ROLE_KEY + SUPABASE_URL as server env vars
+             (never VITE_-prefixed).
+  Frontend -> Vercel (already configured via vercel.json).
+             Set VITE_API_URL to the deployed backend URL.
+
+--------------------------------------------------------------------------------
+6. DO IT INCREMENTALLY (IMPORTANT)
+--------------------------------------------------------------------------------
+Don't migrate all of db.ts at once. Strangle it one entity at a time:
+  1. Stand up the server with JUST GET /api/requests.
+  2. Switch ONLY request-reads in the frontend to the API; leave budgets/POs on
+     direct Supabase.
+  3. Verify, then move the next entity. Keep RLS on the whole time as a net.
+
+--------------------------------------------------------------------------------
+7. NEXT STEP OFFERED
+--------------------------------------------------------------------------------
+Scaffold the server/ folder (steps 1–5) + set up the shared logic folder so there
+is a running GET /api/requests to build on — wired against the existing schema and
+env vars, without touching the frontend yet.
+================================================================================
