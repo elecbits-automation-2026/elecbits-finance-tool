@@ -253,6 +253,28 @@ export async function deactivateEmployee(authId: string) {
   return { success: true as const, password: data.password as string };
 }
 
+// PERMANENTLY delete an account and erase ALL of the user's data via the
+// admin-delete-user edge function: removes their requests, POs, notifications,
+// any pending-signup record, access password, profile and auth user. This is
+// irreversible — there is no reactivation afterward. Service-role only (deleting
+// an auth user can't be done from the browser), so it goes through the function.
+export async function deleteEmployee(authId: string) {
+  const { error } = await supabase.functions.invoke("admin-delete-user", {
+    body: { targetAuthId: authId },
+  });
+  if (error) {
+    // functions.invoke surfaces non-2xx as a FunctionsHttpError whose response
+    // body carries our { error } message — unwrap it for a useful toast.
+    let msg = error.message;
+    try {
+      const ctx = await (error as any).context?.json?.();
+      if (ctx?.error) msg = ctx.error;
+    } catch { /* keep the generic message */ }
+    return { success: false as const, error: msg };
+  }
+  return { success: true as const };
+}
+
 // Fetch the stored access passwords for deactivated users, keyed by auth_id.
 // Only admins can read admin_access (RLS), so this returns {} for everyone else.
 export async function getAccessPasswords(): Promise<Record<string, string>> {

@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Elecbits Finance Tool — consolidated database schema
 -- ----------------------------------------------------------------------------
--- This is a single-file, idempotent merge of migrations 0001–0007, intended for
+-- This is a single-file, idempotent merge of migrations 0001–0008, intended for
 -- bootstrapping a fresh Supabase project in one paste. Run it in the Supabase
 -- SQL Editor (or `supabase db push`). It is equivalent to applying, in order:
 --   0001_init.sql               core tables + RLS
@@ -11,6 +11,7 @@
 --   0005_admin_access_and_deactivate  admin "deactivate & view" + admin_access
 --   0006_user_reactivation      user-driven re-activation handshake
 --   0007_admin_only_user_management   is_admin() narrowed to 'Admin' only
+--   0008_admin_permanent_delete       admin permanent user+data deletion (no DDL)
 --
 -- The migration files remain the source of truth for history; keep this file in
 -- sync when you add a migration. The dedicated admin auth user and the 21
