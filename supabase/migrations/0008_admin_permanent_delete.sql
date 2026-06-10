@@ -1,0 +1,32 @@
+-- 0008: admin permanent user deletion
+-- ----------------------------------------------------------------------------
+-- Adds an irreversible "delete user" action for the dedicated admin, alongside
+-- the reversible "deactivate" from 0005. The admin can permanently remove an
+-- employee and erase ALL of their data:
+--
+--   * requests       WHERE requester_id = <legacy_id>
+--   * pos            WHERE requester_id = <legacy_id>
+--   * notifications  WHERE to_user_id   = <legacy_id>
+--   * pending_signups WHERE email       = <email>
+--   * admin_access    (also cascades from the profiles delete)
+--   * profiles + auth.users  (deleting the auth user cascades to profiles,
+--                             which in turn cascades to admin_access)
+--
+-- The deleted user's name/legacy_id is intentionally NOT scrubbed out of other
+-- employees' shared records (e.g. requests where they were an approver in
+-- data.history) — rewriting another user's workflow audit trail is out of scope.
+--
+-- There is no DDL in this migration:
+--   * Deleting an auth.users row requires the service-role key, so the whole
+--     operation runs in the `admin-delete-user` edge function (service role),
+--     which bypasses RLS — no new policies or columns are needed.
+--   * The existing on-delete-cascade FKs (profiles.auth_id → auth.users,
+--     admin_access.auth_id → profiles) already chain the identity cleanup.
+--   * The finance tables (requests/pos/notifications) reference users only by the
+--     soft legacy_id text, so the edge function deletes those rows explicitly.
+--     See supabase/functions/admin-delete-user/index.ts.
+--
+-- This file is intentionally a no-op marker that keeps the numbered migration
+-- history aligned with the deployed edge function and the app code.
+
+-- (no schema changes)

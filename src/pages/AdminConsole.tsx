@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { LogOut, ShieldCheck, RefreshCw, Mail, Clock, Search, Users, CheckCircle2, Ban, KeyRound, Copy, Check, RotateCcw, Hourglass, X } from "lucide-react";
-import { listEmployees, listRoles, setEmployeeRole, setEmployeeStatus, openReactivation, deactivateEmployee, getAccessPasswords } from "../lib/auth";
+import { LogOut, ShieldCheck, RefreshCw, Mail, Clock, Search, Users, CheckCircle2, Ban, KeyRound, Copy, Check, RotateCcw, Hourglass, X, Trash2 } from "lucide-react";
+import { listEmployees, listRoles, setEmployeeRole, setEmployeeStatus, openReactivation, deactivateEmployee, deleteEmployee, getAccessPasswords } from "../lib/auth";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 
 // ============ ADMIN CONSOLE ============
@@ -124,6 +124,30 @@ export function AdminConsole({ user, onLogout, showToast }) {
     if (!r.success) { if (showToast) showToast(`Could not approve: ${r.error}`, "error"); return; }
     patchStatus(emp, "active");
     if (showToast) showToast(`${emp.name} approved — they can sign in now.`, "success");
+  }
+
+  // PERMANENTLY delete an account and erase ALL of the user's data. Irreversible,
+  // so it's gated behind an explicit warning plus a typed "DELETE" confirmation.
+  async function remove(emp) {
+    if (!window.confirm(
+      `⚠️ PERMANENTLY DELETE ${emp.name} (${emp.email})?\n\n` +
+      `This erases EVERYTHING for this user — their account, profile, and all of ` +
+      `their requests, purchase orders and notifications. This CANNOT be undone ` +
+      `and there is no reactivation afterward.`
+    )) return;
+    const typed = window.prompt(`To confirm permanent deletion of ${emp.name}, type DELETE below:`);
+    if (typed == null) return;
+    if (typed.trim().toUpperCase() !== "DELETE") {
+      if (showToast) showToast("Deletion cancelled — confirmation text did not match.", "info");
+      return;
+    }
+    setBusyId(emp.authId);
+    const r = await deleteEmployee(emp.authId);
+    setBusyId(null);
+    if (!r.success) { if (showToast) showToast(`Could not delete: ${r.error}`, "error"); return; }
+    setEmployees((prev) => prev.filter((e) => e.authId !== emp.authId));
+    setAccessMap((prev) => { const n = { ...prev }; delete n[emp.authId]; return n; });
+    if (showToast) showToast(`${emp.name} and all their data were permanently deleted.`, "success");
   }
 
   const statusStyles = {
@@ -259,6 +283,10 @@ export function AdminConsole({ user, onLogout, showToast }) {
                           <CheckCircle2 className="w-3.5 h-3.5" />Approve
                         </button>
                       )}
+                      {/* Permanent delete — destructive, separated and available in every status. */}
+                      <button onClick={() => remove(emp)} disabled={busy} title="Permanently delete this user and all their data" className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50 ml-1 sm:ml-2 sm:border-l sm:border-slate-200 sm:pl-3 text-red-700 hover:bg-red-100">
+                        <Trash2 className="w-3.5 h-3.5" />Delete
+                      </button>
                     </div>
                   </div>
                 </div>
