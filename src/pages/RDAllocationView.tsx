@@ -22,7 +22,7 @@ export function RDAllocationView({ user, budgets, saveBudgets, showToast }) {
     setErr("");
     if (!form.dept) return setErr("Select a department");
     if (!form.month) return setErr("Select a month");
-    const amt = parseFloat(form.amount || 0);
+    const amt = parseFloat(form.amount || "0");
     if (!amt || amt <= 0) return setErr("Enter a valid budget amount");
 
     setSaving(true);

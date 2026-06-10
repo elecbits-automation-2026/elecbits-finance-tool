@@ -36,7 +36,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
     let actionLabel = "";
     let newStage = request.currentStage;
     let newStatus = request.status;
-    let extraUpdates = {};
+    let extraUpdates: any = {};
 
     if (actionType === "approve") {
       // Super manager override (but not for PO at SuperManagerApproval — that's their actual stage)

@@ -13,7 +13,7 @@ export function ReportsView({ user, requests, budgets, pos }) {
   const rdPaid = paidReqs.filter(r => rdProjects.some(p => p.projectId === r.projectId)).reduce((s, r) => s + (r.amountINR || r.amount), 0);
 
   function groupSum(list, keyFn, valFn = r => r.amountINR || r.amount) {
-    const out = {};
+    const out: Record<string, number> = {};
     list.forEach(r => { const k = keyFn(r); if (k) out[k] = (out[k] || 0) + valFn(r); });
     return Object.entries(out).sort((a, b) => b[1] - a[1]);
   }

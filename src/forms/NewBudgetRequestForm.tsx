@@ -15,8 +15,8 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
   const [projectType, setProjectType] = useState(null);
   const [form, setForm] = useState({
     projectId: "", projectName: "", client: "", startDate: "", endDate: "",
-    clientOrderValue: "", clientOrderCurrency: "INR", clientOrderFxRate: 1,
-    amount: "", currency: "INR", fxRate: 1,
+    clientOrderValue: "", clientOrderCurrency: "INR", clientOrderFxRate: "1",
+    amount: "", currency: "INR", fxRate: "1",
     category: "", month: new Date().toISOString().slice(0, 7),
     extensionFor: "", reason: "", scope: "", attachment: null,
     rdType: "", justification: "", expectedOutcome: "",
@@ -24,8 +24,8 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const amountINR = form.currency === "INR" ? parseFloat(form.amount || 0) : parseFloat(form.amount || 0) * parseFloat(form.fxRate || 0);
-  const clientOrderINR = form.clientOrderCurrency === "INR" ? parseFloat(form.clientOrderValue || 0) : parseFloat(form.clientOrderValue || 0) * parseFloat(form.clientOrderFxRate || 0);
+  const amountINR = form.currency === "INR" ? parseFloat(form.amount || "0") : parseFloat(form.amount || "0") * parseFloat(form.fxRate || "0");
+  const clientOrderINR = form.clientOrderCurrency === "INR" ? parseFloat(form.clientOrderValue || "0") : parseFloat(form.clientOrderValue || "0") * parseFloat(form.clientOrderFxRate || "0");
   const maxAllowedBudget = clientOrderINR * MAX_BUDGET_RATIO;
 
   const currentMonth = new Date().toISOString().slice(0, 7);

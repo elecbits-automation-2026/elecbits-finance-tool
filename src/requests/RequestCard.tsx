@@ -4,7 +4,7 @@ import { ActionButtons } from "./ActionButtons";
 import { CancelButton } from "./CancelButton";
 import { RequestDetails } from "./RequestDetails";
 
-export function RequestCard({ request: r, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, poCounter, expanded, setExpanded, showActions, showCancelResubmit, onResubmit, addNotifications, showToast }) {
+export function RequestCard({ request: r, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter = undefined, poCounter = undefined, expanded, setExpanded, showActions = false, showCancelResubmit = false, onResubmit = undefined, addNotifications = undefined, showToast = undefined }) {
   const isBudget = r.kind === "Budget";
   const isPO = r.kind === "PO";
 

@@ -74,7 +74,7 @@ export function Dashboard({ user, requests, budgets, pos, poCounter, notificatio
         </div>
       </div>
       <main className="max-w-7xl mx-auto px-4 py-5">
-        <UnifiedDashboard user={user} view={view} setView={setView} requests={requests} budgets={budgets} pos={pos} poCounter={poCounter} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} inbox={inbox} addNotifications={addNotifications} showToast={showToast} notifications={notifications} />
+        <UnifiedDashboard user={user} view={view} setView={setView} requests={requests} budgets={budgets} pos={pos} poCounter={poCounter} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} inbox={inbox} addNotifications={addNotifications} showToast={showToast} />
       </main>
     </div>
   );
@@ -133,7 +133,7 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
       {view === "pos" && <POListView {...commonProps} />}
       {view === "reports" && <ReportsView {...commonProps} />}
       {view === "overview" && <OrgOverview {...commonProps} />}
-      {view === "all" && <RequestList {...commonProps} requests={[...requests, ...budgets.filter(b => b.type !== "RDCap" && b.type !== "RDCapRequest"), ...pos].sort((a, b) => new Date(b.createdDate || b.approvedDate) - new Date(a.createdDate || a.approvedDate))} requests_all={requests} budgets_all={budgets} pos_all={pos} emptyMessage="No requests yet." />}
+      {view === "all" && <RequestList {...commonProps} requests={[...requests, ...budgets.filter(b => b.type !== "RDCap" && b.type !== "RDCapRequest"), ...pos].sort((a, b) => +new Date(b.createdDate || b.approvedDate) - +new Date(a.createdDate || a.approvedDate))} requests_all={requests} budgets_all={budgets} pos_all={pos} emptyMessage="No requests yet." />}
     </div>
   );
 }

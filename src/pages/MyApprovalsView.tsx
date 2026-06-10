@@ -40,7 +40,7 @@ export function MyApprovalsView({ user, requests, budgets, pos, poCounter, saveR
         requests={filtered.sort((a, b) => {
           const aA = getUserActionsOnRequest(user, a).all[0];
           const bA = getUserActionsOnRequest(user, b).all[0];
-          return new Date(bA?.at || 0) - new Date(aA?.at || 0);
+          return +new Date(bA?.at || 0) - +new Date(aA?.at || 0);
         })}
         user={user} requests_all={requests} budgets_all={budgets} pos_all={pos}
         saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} poCounter={poCounter}

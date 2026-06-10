@@ -1,7 +1,7 @@
 import { Bell } from "lucide-react";
 
 export function NotificationPanel({ notifications, onClose, onMarkRead, onMarkAllRead }) {
-  const sorted = [...notifications].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 30);
+  const sorted = [...notifications].sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 30);
   return (
     <>
       <div className="fixed inset-0 z-30" onClick={onClose}></div>

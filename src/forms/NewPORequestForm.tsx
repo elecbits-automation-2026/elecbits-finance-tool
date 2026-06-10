@@ -10,7 +10,7 @@ import { FlowPreview } from "../components/FlowPreview";
 // ============ NEW PO REQUEST FORM ============
 export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSuccess, editFor = null }) {
   const isEdit = !!editFor;
-  const [form, setForm] = useState(isEdit ? {
+  const [form, setForm] = useState<any>(isEdit ? {
     poNumber: "",
     isProject: editFor.isProject,
     projectId: editFor.projectId || "",

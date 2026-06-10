@@ -4,7 +4,7 @@ import { RequestCard } from "./RequestCard";
 import { NewPaymentRequestForm } from "../forms/NewPaymentRequestForm";
 
 // ============ REQUEST LIST ============
-export function RequestList({ requests, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, poCounter, emptyMessage, showActions, showCancelResubmit, addNotifications, showToast }) {
+export function RequestList({ requests, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, poCounter, emptyMessage, showActions = false, showCancelResubmit = false, addNotifications, showToast }) {
   const [expanded, setExpanded] = useState(null);
   const [resubmitTarget, setResubmitTarget] = useState(null);
 

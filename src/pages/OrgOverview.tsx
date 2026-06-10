@@ -23,7 +23,7 @@ export function OrgOverview({ user, requests, budgets, pos, showToast }) {
   const activeClientBudget = clientBudgets.reduce((s, b) => s + b.amountINR, 0);
   const activeRDBudget = rdBudgets.reduce((s, b) => s + b.amountINR, 0);
 
-  const byDept = {};
+  const byDept: Record<string, number> = {};
   visibleRequests.filter(r => r.status === "Paid").forEach(r => { byDept[r.dept] = (byDept[r.dept] || 0) + (r.amountINR || r.amount); });
 
   function handleCardClick(data, title) {
