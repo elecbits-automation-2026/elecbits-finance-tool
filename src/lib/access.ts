@@ -41,7 +41,21 @@ export function isHODLevel(user) {
   return user.role === "DeptApprover" || user.role === "BoxBuildMidApprover";
 }
 
+// Read-only employees (catalog rank 0) are pure viewers: they may see their own
+// department's budgets but cannot raise any request or act on the workflow.
+// Admin-assigned only — accounts never self-sign-up into this role.
+export function isReadOnly(user) {
+  return user.role === "EmployeeReadOnly";
+}
+
+// Single gate the UI uses to decide whether to offer the "Raise …" actions.
+export function canRaiseRequests(user) {
+  return !isReadOnly(user);
+}
+
 export function canUserActOnRequest(user, request) {
+  // Read-only accounts never participate in the workflow.
+  if (isReadOnly(user)) return false;
   // R&D cap allocations and allocation requests are config, not workflow items.
   if (request.type === "RDCap" || request.type === "RDCapRequest") return false;
   if (["Paid", "Rejected", "Cancelled", "Active", "Approved", "Closed"].includes(request.status)) return false;

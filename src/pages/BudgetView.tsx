@@ -1,15 +1,24 @@
 import { useState } from "react";
 import { Briefcase, Target } from "lucide-react";
 import { getMonthlyBudgetUsage } from "../lib/finance";
+import { isReadOnly } from "../lib/access";
 
 // ============ BUDGET VIEW ============
 export function BudgetView({ user, budgets, requests }) {
   const [tab, setTab] = useState("client");
 
-  const clientProjects = budgets.filter(b => b.type === "Project" && b.projectType === "Client" && (b.status === "Active" || b.currentStage === "Active"));
-  const rdProjects = budgets.filter(b => b.type === "Project" && b.projectType === "RD" && (b.status === "Active" || b.currentStage === "Active"));
-  const monthlyBudgets = budgets.filter(b => b.type === "Monthly" && (b.status === "Active" || b.currentStage === "Active"));
-  const extensions = budgets.filter(b => b.type === "Extension" && (b.status === "Active" || b.currentStage === "Active"));
+  // Read-only viewers only see their own department's budgets. An extension
+  // inherits the department of the project it extends.
+  const scoped = isReadOnly(user)
+    ? budgets.filter(b => b.type === "Extension"
+        ? budgets.find(p => p.projectId === b.extensionFor && p.type === "Project")?.dept === user.dept
+        : b.dept === user.dept)
+    : budgets;
+
+  const clientProjects = scoped.filter(b => b.type === "Project" && b.projectType === "Client" && (b.status === "Active" || b.currentStage === "Active"));
+  const rdProjects = scoped.filter(b => b.type === "Project" && b.projectType === "RD" && (b.status === "Active" || b.currentStage === "Active"));
+  const monthlyBudgets = scoped.filter(b => b.type === "Monthly" && (b.status === "Active" || b.currentStage === "Active"));
+  const extensions = scoped.filter(b => b.type === "Extension" && (b.status === "Active" || b.currentStage === "Active"));
 
   return (
     <div>

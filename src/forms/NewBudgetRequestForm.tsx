@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { PiggyBank, Briefcase, Target, TrendingUp, Coins, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { EXPENSE_TYPES, NON_PROJECT_DEPTS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD, USERS } from "../constants";
-import { isHODLevel } from "../lib/access";
+import { isHODLevel, isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
 import { getRDAllocation } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
@@ -83,6 +83,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
 
   async function submit() {
     setErr("");
+    if (isReadOnly(user)) return setErr("Your account is read-only and cannot raise requests.");
     if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
     if (!form.amount || amountINR <= 0) return setErr("Valid amount required");
     if (form.currency !== "INR" && (!form.fxRate || parseFloat(form.fxRate) <= 0)) return setErr("Valid FX rate required");

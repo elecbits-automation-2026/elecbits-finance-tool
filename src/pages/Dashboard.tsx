@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { LogOut, Bell, Shield, Clock, FileText, CheckSquare, PiggyBank, FileSignature, Plus, Target, TrendingUp, Building2, Users, Coins } from "lucide-react";
-import { canUserActOnRequest, getUserActionsOnRequest } from "../lib/access";
+import { canUserActOnRequest, getUserActionsOnRequest, isReadOnly } from "../lib/access";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 import { NotificationPanel } from "../components/NotificationPanel";
 import { TabBar } from "../components/TabBar";
@@ -20,7 +20,8 @@ import { RDAllocationView } from "./RDAllocationView";
 // ============ DASHBOARD ============
 export function Dashboard({ user, requests, budgets, pos, poCounter, notifications, saveRequests, saveBudgets, savePOs, savePOCounter, saveNotifications, addNotifications, showToast, onLogout }) {
   const inbox = [...requests, ...budgets, ...pos].filter(r => canUserActOnRequest(user, r));
-  const defaultView = user.role === "Employee" ? "my-requests" : (inbox.length > 0 ? "inbox" : "overview");
+  // Read-only accounts only get the (dept-scoped) Budgets tab, so land them there.
+  const defaultView = isReadOnly(user) ? "budgets" : (user.role === "Employee" ? "my-requests" : (inbox.length > 0 ? "inbox" : "overview"));
   const [view, setView] = useState(defaultView);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
 
@@ -30,8 +31,8 @@ export function Dashboard({ user, requests, budgets, pos, poCounter, notificatio
   async function markNotifRead(id) { await saveNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n)); }
   async function markAllRead() { await saveNotifications(notifications.map(n => n.toUserId === user.id ? { ...n, read: true } : n)); }
 
-  const roleColors = { CEO: "amber", VP: "violet", SuperManager: "fuchsia", FinanceHead: "emerald", Accountant: "teal", DeptApprover: "blue", BoxBuildMidApprover: "cyan", Employee: "slate" };
-  const roleBadge = { CEO: "CEO", VP: "Vice President", SuperManager: "Manager (Special Access)", FinanceHead: "Finance Head", Accountant: "Accountant", DeptApprover: "Department Head", BoxBuildMidApprover: "Box Build Delivery Head", Employee: "Employee" };
+  const roleColors = { CEO: "amber", VP: "violet", SuperManager: "fuchsia", FinanceHead: "emerald", Accountant: "teal", DeptApprover: "blue", BoxBuildMidApprover: "cyan", Employee: "slate", EmployeeReadOnly: "slate" };
+  const roleBadge = { CEO: "CEO", VP: "Vice President", SuperManager: "Manager (Special Access)", FinanceHead: "Finance Head", Accountant: "Accountant", DeptApprover: "Department Head", BoxBuildMidApprover: "Box Build Delivery Head", Employee: "Employee", EmployeeReadOnly: "Employee (Read-only)" };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -91,20 +92,28 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
     return a.approvals.length > 0 || a.rejections.length > 0;
   });
 
+  // Read-only viewers can't raise or act on anything — they only get the
+  // (department-scoped) Budgets tab. Everyone else keeps the full set.
+  const readOnly = isReadOnly(user);
+
   const tabs = [];
-  if (inbox.length > 0 || user.role !== "Employee") tabs.push({ id: "inbox", label: "Action - Need to do", icon: Clock, count: inbox.length, highlight: inbox.length > 0 });
-  tabs.push({ id: "my-requests", label: "My Requests", icon: FileText, count: myItems.length });
-  if (canSeeMyApprovals) tabs.push({ id: "my-approvals", label: "My Approvals", icon: CheckSquare, count: myApprovalItems.length });
-  tabs.push({ id: "new-budget", label: "Raise Budget", icon: PiggyBank });
-  tabs.push({ id: "new-po", label: "Raise PO", icon: FileSignature });
-  tabs.push({ id: "new-payment", label: "Raise Payment", icon: Plus });
-  tabs.push({ id: "budgets", label: "All Budgets", icon: Target });
-  tabs.push({ id: "pos", label: "All POs", icon: FileSignature });
-  if (user.role === "SuperManager") tabs.push({ id: "rd-allocations", label: "R&D Allocations", icon: Coins });
-  if (canViewReports) tabs.push({ id: "reports", label: "Reports", icon: TrendingUp });
-  if (canViewOrg) {
-    tabs.push({ id: "overview", label: "Org Overview", icon: Building2 });
-    tabs.push({ id: "all", label: "All Requests", icon: Users });
+  if (readOnly) {
+    tabs.push({ id: "budgets", label: "Dept Budgets", icon: Target });
+  } else {
+    if (inbox.length > 0 || user.role !== "Employee") tabs.push({ id: "inbox", label: "Action - Need to do", icon: Clock, count: inbox.length, highlight: inbox.length > 0 });
+    tabs.push({ id: "my-requests", label: "My Requests", icon: FileText, count: myItems.length });
+    if (canSeeMyApprovals) tabs.push({ id: "my-approvals", label: "My Approvals", icon: CheckSquare, count: myApprovalItems.length });
+    tabs.push({ id: "new-budget", label: "Raise Budget", icon: PiggyBank });
+    tabs.push({ id: "new-po", label: "Raise PO", icon: FileSignature });
+    tabs.push({ id: "new-payment", label: "Raise Payment", icon: Plus });
+    tabs.push({ id: "budgets", label: "All Budgets", icon: Target });
+    tabs.push({ id: "pos", label: "All POs", icon: FileSignature });
+    if (user.role === "SuperManager") tabs.push({ id: "rd-allocations", label: "R&D Allocations", icon: Coins });
+    if (canViewReports) tabs.push({ id: "reports", label: "Reports", icon: TrendingUp });
+    if (canViewOrg) {
+      tabs.push({ id: "overview", label: "Org Overview", icon: Building2 });
+      tabs.push({ id: "all", label: "All Requests", icon: Users });
+    }
   }
 
   const commonProps = { user, requests, budgets, pos, poCounter, saveRequests, saveBudgets, savePOs, savePOCounter, addNotifications, showToast };

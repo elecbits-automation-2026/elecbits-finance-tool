@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { RotateCcw, Wallet, AlertTriangle, FileSignature, Edit3, Target } from "lucide-react";
 import { USERS, EXPENSE_TYPES, NON_PROJECT_DEPTS, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
 import { getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage, getApprovedPOsForProject, getApprovedPOsForDept, getPOUsage, getPOAvailable } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
@@ -77,6 +78,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
 
   async function submit() {
     setErr("");
+    if (isReadOnly(user)) return setErr("Your account is read-only and cannot raise requests.");
     if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
     if (!form.expenseTypeId) return setErr("Select expense type");
     if (!form.description.trim()) return setErr("Description required");

@@ -135,6 +135,7 @@ create table if not exists public.roles (
 );
 
 insert into public.roles (id, key, label, titles, rank) values
+  (0, 'EmployeeReadOnly', 'Employee (Read-only)', 'Read-only, Viewer',          0),
   (1, 'Employee',     'Employee',        'Emp, Junior, Intern, Executive',        1),
   (2, 'DeptApprover', 'Department Head', 'Manager, Dept Head, Reporting Manager', 2),
   (3, 'Accountant',   'Accountant',      'Accountant',                            3),

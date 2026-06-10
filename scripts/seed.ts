@@ -20,6 +20,7 @@ import { USERS, SEED_BUDGETS, SEED_POS, ADMIN_EMAIL } from "../src/constants";
 // first-run convenience (change it for any real deployment).
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin@123";
 const ROLES = [
+  { id: 0, key: "EmployeeReadOnly", label: "Employee (Read-only)", titles: "Read-only, Viewer",          rank: 0 },
   { id: 1, key: "Employee",     label: "Employee",        titles: "Emp, Junior, Intern, Executive",      rank: 1 },
   { id: 2, key: "DeptApprover", label: "Department Head", titles: "Manager, Dept Head, Reporting Manager", rank: 2 },
   { id: 3, key: "Accountant",   label: "Accountant",      titles: "Accountant",                          rank: 3 },

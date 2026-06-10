@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Edit3, FileSignature, Briefcase, Target, AlertTriangle, Plus, X, CheckCircle2 } from "lucide-react";
 import { CURRENCIES, EXPENSE_TYPES, NON_PROJECT_DEPTS, GSTIN_REGEX, GST_RATES, UNIT_OPTIONS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
 import { computeLineItemTotals, getActiveBudgetForProject } from "../lib/finance";
 import { AttachmentInput } from "../components/AttachmentInput";
@@ -77,6 +78,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
 
   async function submit() {
     setErr("");
+    if (isReadOnly(user)) return setErr("Your account is read-only and cannot raise requests.");
     if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
     if (form.isProject && !form.projectId) return setErr("Select project");
     if (!form.isProject && !form.category) return setErr("Select category");
