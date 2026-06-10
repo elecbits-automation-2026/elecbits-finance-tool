@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { LogOut, ShieldCheck, RefreshCw, Mail, Clock, Search, Users, CheckCircle2, Ban, KeyRound, Copy, Check, RotateCcw, Hourglass, X, Trash2 } from "lucide-react";
-import { listEmployees, listRoles, setEmployeeRole, setEmployeeStatus, openReactivation, deactivateEmployee, deleteEmployee, getAccessPasswords } from "../lib/auth";
+import { LogOut, ShieldCheck, RefreshCw, Mail, Clock, Search, Users, CheckCircle2, Ban, KeyRound, Copy, Check, RotateCcw, Hourglass, X, Trash2, AlertTriangle } from "lucide-react";
+import { listEmployees, listRoles, setEmployeeRole, setEmployeeDept, setEmployeeStatus, openReactivation, deactivateEmployee, deleteEmployee, getAccessPasswords } from "../lib/auth";
+import { DEPARTMENTS } from "../constants";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 
 // ============ ADMIN CONSOLE ============
@@ -73,6 +74,18 @@ export function AdminConsole({ user, onLogout, showToast }) {
     if (!r.success) { if (showToast) showToast(`Could not update role: ${r.error}`, "error"); return; }
     setEmployees((prev) => prev.map((e) => (e.authId === emp.authId ? { ...e, role } : e)));
     if (showToast) showToast(`${emp.name} is now ${roleLabel[role] || role}.`, "success");
+  }
+
+  // Assign / change an employee's department. Department drives request routing
+  // and a department head's approval scope, so this also clears the "no department"
+  // flag once set.
+  async function changeDept(emp, dept) {
+    setBusyId(emp.authId);
+    const r = await setEmployeeDept(emp.authId, dept);
+    setBusyId(null);
+    if (!r.success) { if (showToast) showToast(`Could not update department: ${r.error}`, "error"); return; }
+    setEmployees((prev) => prev.map((e) => (e.authId === emp.authId ? { ...e, dept } : e)));
+    if (showToast) showToast(`${emp.name} is now in ${dept}.`, "success");
   }
 
   // Locally patch one employee's status after a successful action.
@@ -163,6 +176,7 @@ export function AdminConsole({ user, onLogout, showToast }) {
     active: employees.filter((e) => e.status === "active").length,
     pending: employees.filter((e) => e.status === "pending").length,
     disabled: employees.filter((e) => e.status === "disabled" || e.status === "deactivated").length,
+    noDept: employees.filter((e) => !e.dept).length,
   }), [employees]);
 
   return (
@@ -200,6 +214,7 @@ export function AdminConsole({ user, onLogout, showToast }) {
                 {counts.total} total · <span className="text-emerald-600 font-semibold">{counts.active} active</span>
                 {counts.pending > 0 && <> · <span className="text-amber-600 font-semibold">{counts.pending} pending</span></>}
                 {counts.disabled > 0 && <> · <span className="text-red-600 font-semibold">{counts.disabled} disabled</span></>}
+                {counts.noDept > 0 && <> · <span className="text-red-600 font-semibold">{counts.noDept} no department</span></>}
               </span>
             )}
           </div>
@@ -229,6 +244,9 @@ export function AdminConsole({ user, onLogout, showToast }) {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-slate-900">{emp.name}</span>
                       <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${statusStyles[emp.status] || "bg-slate-100 text-slate-600"}`}>{emp.status}</span>
+                      {!emp.dept && (
+                        <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />No department</span>
+                      )}
                     </div>
                     <div className="text-xs text-slate-500 flex items-center gap-3 mt-0.5 flex-wrap">
                       <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{emp.email}</span>
@@ -260,6 +278,15 @@ export function AdminConsole({ user, onLogout, showToast }) {
                         {roles.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
                         {/* Surface any legacy role not in the catalog so it isn't silently lost. */}
                         {!roles.some((r) => r.key === emp.role) && <option value={emp.role}>{roleLabel[emp.role] || emp.role}</option>}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Department</label>
+                      <select value={emp.dept || ""} disabled={busy} onChange={(e) => changeDept(emp, e.target.value)} className={`text-xs px-2 py-1.5 border rounded-lg bg-white disabled:opacity-50 min-w-[140px] ${emp.dept ? "border-slate-300" : "border-red-300 ring-1 ring-red-200"}`}>
+                        <option value="" disabled>Select…</option>
+                        {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                        {/* Surface any legacy department not in the catalog so it isn't silently lost. */}
+                        {emp.dept && !DEPARTMENTS.includes(emp.dept) && <option value={emp.dept}>{emp.dept}</option>}
                       </select>
                     </div>
                     <div className="mt-4 flex items-center gap-1.5">

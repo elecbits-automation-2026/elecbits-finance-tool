@@ -83,6 +83,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
 
   async function submit() {
     setErr("");
+    if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
     if (!form.amount || amountINR <= 0) return setErr("Valid amount required");
     if (form.currency !== "INR" && (!form.fxRate || parseFloat(form.fxRate) <= 0)) return setErr("Valid FX rate required");
 

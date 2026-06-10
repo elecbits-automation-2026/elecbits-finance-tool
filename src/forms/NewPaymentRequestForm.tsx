@@ -77,6 +77,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
 
   async function submit() {
     setErr("");
+    if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
     if (!form.expenseTypeId) return setErr("Select expense type");
     if (!form.description.trim()) return setErr("Description required");
     if (!form.amount || amountINR <= 0) return setErr("Valid amount required");

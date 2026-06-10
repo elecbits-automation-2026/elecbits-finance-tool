@@ -76,6 +76,9 @@ export async function signOut() {
 // pending_signups record for an admin to assign a role/department.
 export async function signUp(opts: { email: string; password: string; name: string; dept?: string; designation?: string; requestedRole?: string }) {
   const email = opts.email.toLowerCase().trim();
+  // Department is mandatory: every account must belong to a department so the
+  // approval workflow can route requests and scope a department head's access.
+  if (!opts.dept) return { success: false as const, error: "Please select your department." };
   const { data, error } = await supabase.auth.signUp({ email, password: opts.password });
   if (error) return { success: false as const, error: error.message };
 
@@ -190,6 +193,15 @@ export async function listEmployees() {
 // Assign a role-group (profiles.role) to an employee.
 export async function setEmployeeRole(authId: string, role: string) {
   const { error } = await supabase.from("profiles").update({ role }).eq("auth_id", authId);
+  if (error) return { success: false as const, error: error.message };
+  return { success: true as const };
+}
+
+// Assign a department (profiles.dept) to an employee. Department drives request
+// routing and a department head's visibility/approval scope, so the admin can
+// (re)assign it any time — e.g. to fix accounts that signed up without one.
+export async function setEmployeeDept(authId: string, dept: string) {
+  const { error } = await supabase.from("profiles").update({ dept }).eq("auth_id", authId);
   if (error) return { success: false as const, error: error.message };
   return { success: true as const };
 }

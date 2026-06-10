@@ -36,10 +36,11 @@ export function LoginPage({ onLogin }) {
     setError("");
     setNotice("");
     if (!name.trim()) { setError("Please enter your name"); return; }
+    if (!dept) { setError("Please select your department"); return; }
     if (!email || !password) { setError("Please enter both email and password"); return; }
     if (password.length < 6) { setError("Password must be at least 6 characters"); return; }
     setBusy(true);
-    const r = await signUp({ email, password, name: name.trim(), dept: dept || undefined, designation: designation.trim() || undefined });
+    const r = await signUp({ email, password, name: name.trim(), dept, designation: designation.trim() || undefined });
     setBusy(false);
     if (!r.success) { setError(r.error); return; }
     setNotice("Account created — it's awaiting admin approval. You'll be able to sign in once an admin activates it.");
@@ -90,7 +91,7 @@ export function LoginPage({ onLogin }) {
                   <input type="text" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitSignup()} placeholder="Your name" className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Department <span className="font-normal text-slate-400">(optional)</span></label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Department <span className="font-normal text-red-500">*</span></label>
                   <select value={dept} onChange={(e) => setDept(e.target.value)} className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                     <option value="">Select a department…</option>
                     {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}

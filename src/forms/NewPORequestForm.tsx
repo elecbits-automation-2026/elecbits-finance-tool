@@ -77,6 +77,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
 
   async function submit() {
     setErr("");
+    if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
     if (form.isProject && !form.projectId) return setErr("Select project");
     if (!form.isProject && !form.category) return setErr("Select category");
     if (!form.supplierName.trim()) return setErr("Supplier name required");
