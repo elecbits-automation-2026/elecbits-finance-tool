@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { RotateCcw, Wallet, AlertTriangle, FileSignature, Edit3, Target } from "lucide-react";
-import { USERS, EXPENSE_TYPES, NON_PROJECT_DEPTS, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { EXPENSE_TYPES, NON_PROJECT_DEPTS, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
 import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
+import { getRoster } from "../lib/roster";
 import { getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage, getApprovedPOsForProject, getApprovedPOsForDept, getPOUsage, getPOAvailable } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
 import { AttachmentInput } from "../components/AttachmentInput";
@@ -147,7 +148,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
   const flowSteps = [user.name];
   if (needsMid) flowSteps.push("Arun (Delivery Head)");
   if (isOdmProject) flowSteps.push("Shreya + Akash (both)");
-  else if (isMultiApprover && form.selectedApproverIds.length > 0) flowSteps.push(form.selectedApproverIds.map(id => USERS.find(u => u.id === id)?.name).filter(Boolean).join(" + "));
+  else if (isMultiApprover && form.selectedApproverIds.length > 0) flowSteps.push(form.selectedApproverIds.map(id => getRoster().find(u => u.id === id)?.name).filter(Boolean).join(" + "));
   else if (eligibleApprovers.length === 1) flowSteps.push(eligibleApprovers[0].name);
   else if (isMultiApprover) flowSteps.push("<select approver>");
   if (amountINR >= VP_THRESHOLD && amountINR < CEO_THRESHOLD) flowSteps.push("Mahendra (VP)");

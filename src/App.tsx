@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { SEED_BUDGETS, SEED_POS } from "./constants";
 import { db } from "./lib/db";
-import { signIn, signOut, getCurrentUser } from "./lib/auth";
+import { signIn, signOut, getCurrentUser, listEmployees } from "./lib/auth";
+import { setRoster } from "./lib/roster";
 import { LoginPage } from "./pages/LoginPage";
 import { Dashboard } from "./pages/Dashboard";
 import { AdminConsole } from "./pages/AdminConsole";
@@ -38,6 +39,16 @@ export default function App() {
   }, [currentUser, dataLoaded]);
 
   async function loadData() {
+    // Live roster — drives approval routing so heads created at runtime (not just the
+    // seeded users) are recognised as approvers. Falls back to the seeded roster on
+    // failure. Only active accounts are eligible to approve.
+    try {
+      const employees = await listEmployees();
+      setRoster(employees.filter((e) => e.status === "active"));
+    } catch (err) {
+      console.log("Roster load failed, using seeded roster:", err?.message);
+    }
+
     // Requests
     try {
       setRequests(await db.fetchRequests());

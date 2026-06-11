@@ -1,36 +1,47 @@
-import { USERS, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { getRoster } from "./roster";
 
 // ============ APPROVAL WORKFLOW HELPERS ============
-export function getEligibleDeptApprovers(requester, selectedType, isProject) {
-  const approvers = [];
-  if (requester.dept === "ODM" || requester.dept === "Sales") {
-    if (requester.scope === "ODM-SALES") {
-      approvers.push(USERS.find(u => u.id === "U11"));
-    } else if (isProject) {
-      approvers.push(USERS.find(u => u.id === "U08"));
-      approvers.push(USERS.find(u => u.id === "U12"));
-    } else {
-      approvers.push(USERS.find(u => u.id === "U08"));
-    }
-  } else if (requester.dept === "Box Build") {
-    approvers.push(USERS.find(u => u.id === "U15"));
-    approvers.push(USERS.find(u => u.id === "U16"));
-  } else if (requester.dept === "HR") {
-    approvers.push(USERS.find(u => u.id === "U09"));
-  } else if (requester.dept === "Product+Marketing") {
-    approvers.push(USERS.find(u => u.id === "U10"));
-  } else if (requester.dept === "Finance") {
-    approvers.push(USERS.find(u => u.id === "U06"));
-  } else if (requester.dept === "Executive") {
-    if (requester.role === "CEO") {
-      approvers.push(...USERS.filter(u => u.role === "CEO" && u.id !== requester.id));
-    } else if (requester.role === "VP") {
-      approvers.push(...USERS.filter(u => u.role === "CEO"));
-    }
-  } else if (requester.dept === "Management") {
-    approvers.push(...USERS.filter(u => u.role === "SuperManager" && u.id !== requester.id));
+// Routing is keyed off a department head's ROLE + SCOPE, never their user id, so any
+// account the admin gives the same role/scope is recognised automatically. Candidates
+// come from the live roster (getRoster()), so heads created at runtime route correctly.
+// `scope` is a per-user mandate (e.g. "ODM-PROJECT" = ODM projects only); a head with
+// no special scope simply covers their own department.
+const deptApprovers = () => getRoster().filter(u => u.role === "DeptApprover");
+
+function approverScopeCovers(approver, dept, isProject) {
+  switch (approver.scope) {
+    case "ODM-ALL": return dept === "ODM";
+    case "ODM-PROJECT": return dept === "ODM" && isProject === true;
+    case "ODM-SALES": return dept === "ODM" || dept === "Sales";
+    case "HR": return dept === "HR";
+    case "PRODUCT-MARKETING": return dept === "Product+Marketing";
+    case "BOXBUILD": return dept === "Box Build";
+    default: return Boolean(approver.dept) && approver.dept === dept;
   }
-  return approvers.filter(Boolean);
+}
+
+export function getEligibleDeptApprovers(requester, selectedType, isProject) {
+  const dept = requester.dept;
+  // Executive / Management self-approval chains are purely role-based.
+  if (dept === "Executive") {
+    if (requester.role === "CEO") return getRoster().filter(u => u.role === "CEO" && u.id !== requester.id);
+    if (requester.role === "VP") return getRoster().filter(u => u.role === "CEO");
+    return [];
+  }
+  if (dept === "Management") return getRoster().filter(u => u.role === "SuperManager" && u.id !== requester.id);
+  // Finance routes to the Finance Head.
+  if (dept === "Finance") return getRoster().filter(u => u.role === "FinanceHead");
+  // A requester carrying the ODM-SALES bridge scope routes to the ODM-SALES head only.
+  if ((dept === "ODM" || dept === "Sales") && requester.scope === "ODM-SALES") {
+    return deptApprovers().filter(u => u.scope === "ODM-SALES");
+  }
+  // ODM / Sales: the all-ODM head, plus the project head when this is a project.
+  if (dept === "ODM" || dept === "Sales") {
+    return deptApprovers().filter(u => u.scope === "ODM-ALL" || (isProject && u.scope === "ODM-PROJECT"));
+  }
+  // Every other department: the DeptApprover(s) whose mandate covers it.
+  return deptApprovers().filter(u => approverScopeCovers(u, dept, isProject));
 }
 
 export function needsBoxBuildMidApproval(requester) {
@@ -126,17 +137,13 @@ export function getStageLabel(stage, kind = "Payment") {
   }[stage] || stage;
 }
 
+// Heads to notify for a department's activity. Like getEligibleDeptApprovers but also
+// includes the Box Build mid-approver (Delivery Head) so they stay in the loop.
 export function getDeptHeadsForDept(dept, isProject = false) {
-  const heads = [];
-  if (dept === "ODM") {
-    heads.push(USERS.find(u => u.id === "U08"));
-    if (isProject) heads.push(USERS.find(u => u.id === "U12"));
-  } else if (dept === "Sales") heads.push(USERS.find(u => u.id === "U11"));
-  else if (dept === "Box Build") {
-    heads.push(USERS.find(u => u.id === "U15"));
-    heads.push(USERS.find(u => u.id === "U16"));
-    heads.push(USERS.find(u => u.id === "U19"));
-  } else if (dept === "HR") heads.push(USERS.find(u => u.id === "U09"));
-  else if (dept === "Product+Marketing") heads.push(USERS.find(u => u.id === "U10"));
-  return heads.filter(Boolean);
+  if (dept === "ODM") return deptApprovers().filter(u => u.scope === "ODM-ALL" || (isProject && u.scope === "ODM-PROJECT"));
+  if (dept === "Sales") return deptApprovers().filter(u => u.scope === "ODM-SALES");
+  if (dept === "Box Build") return getRoster().filter(u => (u.role === "DeptApprover" && u.scope === "BOXBUILD") || u.role === "BoxBuildMidApprover");
+  if (dept === "HR") return deptApprovers().filter(u => u.scope === "HR");
+  if (dept === "Product+Marketing") return deptApprovers().filter(u => u.scope === "PRODUCT-MARKETING");
+  return deptApprovers().filter(u => u.dept === dept);
 }
