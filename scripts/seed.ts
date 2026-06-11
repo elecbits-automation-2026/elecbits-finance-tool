@@ -1,6 +1,8 @@
 /**
- * One-time seed: creates the 21 employee auth accounts + profiles, and loads
- * the demo budgets / purchase orders. Safe to re-run (idempotent upserts).
+ * One-time seed: provisions the dedicated admin account and the assignable
+ * role-groups. It does NOT create any employee accounts or demo data — every
+ * employee account is created through self-service signup and approved by the
+ * admin in the Admin Console.
  *
  * Run from the project root with:
  *   node --env-file=.env.local node_modules/.bin/tsx scripts/seed.ts
@@ -10,7 +12,7 @@
  * The service-role key bypasses RLS and can create users — keep it secret.
  */
 import { createClient } from "@supabase/supabase-js";
-import { USERS, SEED_BUDGETS, SEED_POS, ADMIN_EMAIL } from "../src/constants";
+import { ADMIN_EMAIL } from "../src/constants";
 
 // The dedicated admin account (login: "admin" / admin@123) and the 7 assignable
 // role-groups. The roles table is also seeded by migration 0004; this upsert is
@@ -50,49 +52,6 @@ async function findAuthUserByEmail(email: string) {
     if (data.users.length < 1000) break;
   }
   return null;
-}
-
-async function seedUsers() {
-  for (const u of USERS) {
-    let authId: string | undefined;
-
-    const { data: created, error } = await admin.auth.admin.createUser({
-      email: u.email,
-      password: u.password,
-      email_confirm: true,
-    });
-
-    if (created?.user) {
-      authId = created.user.id;
-      console.log(`created auth user ${u.email}`);
-    } else {
-      // Likely already exists — look it up.
-      const existing = await findAuthUserByEmail(u.email);
-      if (existing) {
-        authId = existing.id;
-        console.log(`auth user exists ${u.email}${error ? ` (${error.message})` : ""}`);
-      } else {
-        console.error(`could not create or find ${u.email}: ${error?.message}`);
-        continue;
-      }
-    }
-
-    const { error: pErr } = await admin.from("profiles").upsert(
-      {
-        auth_id: authId,
-        legacy_id: u.id,
-        email: u.email,
-        name: u.name,
-        dept: u.dept,
-        designation: u.designation,
-        role: u.role,
-        scope: (u as any).scope ?? null,
-        status: "active",
-      },
-      { onConflict: "auth_id" }
-    );
-    if (pErr) console.error(`profile upsert failed for ${u.email}: ${pErr.message}`);
-  }
 }
 
 async function seedAdmin() {
@@ -143,46 +102,9 @@ async function seedRoles() {
   else console.log(`seeded ${ROLES.length} roles`);
 }
 
-function num(o: any) {
-  return o.amountINR ?? o.amount ?? null;
-}
-
-async function seedBudgets() {
-  const rows = SEED_BUDGETS.map((o: any) => ({
-    id: o.id, type: o.type ?? null, dept: o.dept ?? null, status: o.status ?? null,
-    current_stage: o.currentStage ?? null, amount_inr: num(o), data: o,
-  }));
-  const { error } = await admin.from("budgets").upsert(rows, { onConflict: "id" });
-  if (error) console.error("budgets seed failed:", error.message);
-  else console.log(`seeded ${rows.length} budgets`);
-}
-
-async function seedPOs() {
-  const rows = SEED_POS.map((o: any) => ({
-    id: o.id, po_number: o.poNumber ?? null, requester_id: o.requesterId ?? null, dept: o.dept ?? null,
-    status: o.status ?? null, current_stage: o.currentStage ?? null, amount_inr: num(o), data: o,
-  }));
-  const { error } = await admin.from("pos").upsert(rows, { onConflict: "id" });
-  if (error) console.error("pos seed failed:", error.message);
-  else console.log(`seeded ${rows.length} purchase orders`);
-}
-
-async function seedCounter() {
-  const { error } = await admin.from("app_meta").upsert(
-    { key: "po_counter", value: 2, updated_at: new Date().toISOString() },
-    { onConflict: "key" }
-  );
-  if (error) console.error("po_counter seed failed:", error.message);
-  else console.log("seeded po_counter = 2");
-}
-
 async function main() {
   await seedRoles();
   await seedAdmin();
-  await seedUsers();
-  await seedBudgets();
-  await seedPOs();
-  await seedCounter();
   console.log("\nDone.");
 }
 

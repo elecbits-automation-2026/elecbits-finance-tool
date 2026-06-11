@@ -393,10 +393,10 @@ Idempotent, run with the service-role key (bypasses RLS, can create auth users):
 1. `seedRoles` — upsert the 7 role-groups (belt-and-suspenders vs. 0004).
 2. `seedAdmin` — create/sync `admin@elecbits.in` (role `Admin`); rotating
    `ADMIN_PASSWORD` + re-running updates the password.
-3. `seedUsers` — create the 21 employee auth accounts + `profiles` rows
-   (`email_confirm: true`).
-4. `seedBudgets` / `seedPOs` — load demo data from constants.
-5. `seedCounter` — set `po_counter = 2`.
+
+It seeds **only** the admin account and role-groups — no employee accounts and no
+demo budgets/POs. Employees register via self-service signup and are approved by
+the admin; budgets and POs are created in-app.
 
 Re-running is safe (upserts on conflict; existing auth users are looked up).
 
