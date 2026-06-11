@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Edit3, History, XCircle, CheckCircle2, Ban, Paperclip } from "lucide-react";
-import { CURRENCIES, USERS } from "../constants";
+import { CURRENCIES } from "../constants";
+import { getRoster } from "../lib/roster";
 import { AttachmentViewer } from "../components/AttachmentViewer";
 
 export function RequestDetails({ request: r, pos_all }) {
@@ -95,7 +96,7 @@ export function RequestDetails({ request: r, pos_all }) {
               </div>
             </div>
           )}
-          {r.selectedApprovers && r.selectedApprovers.length > 0 && <div className="sm:col-span-2"><span className="text-slate-500">Approvers:</span> {r.selectedApprovers.map(id => USERS.find(u => u.id === id)?.name).filter(Boolean).join(" + ")}</div>}
+          {r.selectedApprovers && r.selectedApprovers.length > 0 && <div className="sm:col-span-2"><span className="text-slate-500">Approvers:</span> {r.selectedApprovers.map(id => getRoster().find(u => u.id === id)?.name).filter(Boolean).join(" + ")}</div>}
         </div>
       </div>
       {isPOEdit && originalPO && (

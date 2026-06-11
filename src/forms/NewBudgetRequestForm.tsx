@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { PiggyBank, Briefcase, Target, TrendingUp, Coins, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { EXPENSE_TYPES, NON_PROJECT_DEPTS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD, USERS } from "../constants";
+import { EXPENSE_TYPES, NON_PROJECT_DEPTS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
 import { isHODLevel, isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
+import { getRoster } from "../lib/roster";
 import { getRDAllocation } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
 import { AttachmentInput } from "../components/AttachmentInput";
@@ -40,7 +41,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
 
   async function requestRDAllocation() {
     const now = new Date().toISOString();
-    const supers = USERS.filter(u => u.role === "SuperManager");
+    const supers = getRoster().filter(u => u.role === "SuperManager");
     const notifs = supers.map((s, i) => ({
       id: "N-" + Date.now() + "-rdalloc-" + i,
       toUserId: s.id,

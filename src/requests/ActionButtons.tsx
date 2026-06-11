@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CheckCircle2, XCircle, AlertTriangle, Send, Upload, X, Undo2, CheckSquare, FileSignature, Paperclip } from "lucide-react";
-import { USERS } from "../constants";
 import { getStageLabel, computeNextStage, getDeptHeadsForDept } from "../lib/workflow";
+import { getRoster } from "../lib/roster";
 import { formatPONumber } from "../lib/finance";
 
 // ============ ACTION BUTTONS ============
@@ -216,7 +216,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
       const notifs = [{ id: "N-" + Date.now() + "-1", toUserId: request.requesterId, title: "Payment Completed", message: `Your request ${request.id} (₹${(request.amountINR || request.amount).toLocaleString("en-IN")}) has been paid.${paymentForm.utr ? ` UTR: ${paymentForm.utr}` : ""}`, at: now, read: false, requestId: request.id }];
       const deptHeads = getDeptHeadsForDept(request.dept, request.isProject);
       deptHeads.forEach((dh, idx) => { if (dh.id !== request.requesterId) notifs.push({ id: "N-" + Date.now() + "-dh-" + idx, toUserId: dh.id, title: "Payment in Your Dept", message: `${request.requesterName}'s request ${request.id} paid.`, at: now, read: false, requestId: request.id }); });
-      const fh = USERS.find(u => u.role === "FinanceHead");
+      const fh = getRoster().find(u => u.role === "FinanceHead");
       if (fh && fh.id !== user.id) notifs.push({ id: "N-" + Date.now() + "-fh", toUserId: fh.id, title: "Payment Completed", message: `${request.id} — ${request.requesterName} — ₹${(request.amountINR || request.amount).toLocaleString("en-IN")}`, at: now, read: false, requestId: request.id });
       await addNotifications(notifs);
       if (showToast) showToast("Payment paid. Notifications sent.", "success");
