@@ -3,7 +3,7 @@ import { XCircle, CheckCircle } from "lucide-react";
 import { signUp, requestReactivation } from "../lib/auth";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 
-const DEPARTMENTS = ["ODM", "Sales", "Box Build", "HR", "Product+Marketing", "Finance", "Management", "Executive"];
+const DEPARTMENTS = ["ODM", "Sales", "Box Build", "HR", "Product", "Marketing", "Finance", "Management", "Executive"];
 
 // ============ LOGIN ============
 export function LoginPage({ onLogin }) {

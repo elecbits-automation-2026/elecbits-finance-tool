@@ -11,7 +11,6 @@ function headSeesRequest(user, request) {
     case "ODM-PROJECT": return request.dept === "ODM" && request.isProject === true;
     case "ODM-SALES": return request.dept === "ODM" || (request.dept === "Sales" && request.scope === "ODM-SALES");
     case "HR": return request.dept === "HR";
-    case "PRODUCT-MARKETING": return request.dept === "Product+Marketing";
     case "BOXBUILD": return request.dept === "Box Build";
     // No special scope (incl. the Box Build mid-approver): own department only. With
     // no department assigned they see nothing until an admin sets one (the Admin
