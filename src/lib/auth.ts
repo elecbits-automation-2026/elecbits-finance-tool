@@ -18,6 +18,7 @@ function toUser(profile: any) {
     email: profile.email,
     name: profile.name,
     dept: profile.dept,
+    extraDepts: profile.extra_depts ?? [],
     designation: profile.designation,
     role: profile.role,
     scope: profile.scope ?? undefined,
@@ -202,6 +203,17 @@ export async function setEmployeeRole(authId: string, role: string) {
 // (re)assign it any time — e.g. to fix accounts that signed up without one.
 export async function setEmployeeDept(authId: string, dept: string) {
   const { error } = await supabase.from("profiles").update({ dept }).eq("auth_id", authId);
+  if (error) return { success: false as const, error: error.message };
+  return { success: true as const };
+}
+
+// Set the ADDITIONAL departments an employee belongs to / heads (beyond their
+// primary `dept`). Admin-only. A department head with extra departments approves
+// and sees work across all of them; the dashboard gives them a per-department tab.
+// The primary dept is never duplicated into the list.
+export async function setEmployeeExtraDepts(authId: string, extraDepts: string[]) {
+  const list = Array.from(new Set((extraDepts ?? []).filter(Boolean)));
+  const { error } = await supabase.from("profiles").update({ extra_depts: list }).eq("auth_id", authId);
   if (error) return { success: false as const, error: error.message };
   return { success: true as const };
 }
