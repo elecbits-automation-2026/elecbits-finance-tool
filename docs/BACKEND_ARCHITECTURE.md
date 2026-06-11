@@ -353,7 +353,7 @@ Routing is computed client-side and persisted in each request's
 `current_stage` + `data.history[]`.
 
 - `getEligibleDeptApprovers(requester, type, isProject)` — picks dept approvers
-  by dept/scope/role (ODM, Sales, Box Build, HR, Product+Marketing, Finance,
+  by dept/scope/role (ODM, Sales, Box Build, HR, Product, Marketing, Finance,
   Executive, Management).
 - `needsBoxBuildMidApproval(requester)` — Box Build PM/Vendor Manager extra step.
 - `computeNextStage(request, currentStage, approver)` — the state machine.

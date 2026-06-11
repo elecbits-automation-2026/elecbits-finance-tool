@@ -15,7 +15,6 @@ function approverScopeCovers(approver, dept, isProject) {
     case "ODM-PROJECT": return dept === "ODM" && isProject === true;
     case "ODM-SALES": return dept === "ODM" || dept === "Sales";
     case "HR": return dept === "HR";
-    case "PRODUCT-MARKETING": return dept === "Product+Marketing";
     case "BOXBUILD": return dept === "Box Build";
     default: return Boolean(approver.dept) && approver.dept === dept;
   }
@@ -144,6 +143,5 @@ export function getDeptHeadsForDept(dept, isProject = false) {
   if (dept === "Sales") return deptApprovers().filter(u => u.scope === "ODM-SALES");
   if (dept === "Box Build") return getRoster().filter(u => (u.role === "DeptApprover" && u.scope === "BOXBUILD") || u.role === "BoxBuildMidApprover");
   if (dept === "HR") return deptApprovers().filter(u => u.scope === "HR");
-  if (dept === "Product+Marketing") return deptApprovers().filter(u => u.scope === "PRODUCT-MARKETING");
   return deptApprovers().filter(u => u.dept === dept);
 }

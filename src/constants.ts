@@ -4,7 +4,7 @@ export const CEO_THRESHOLD = 500000;
 export const PROFIT_MARGIN = 0.20;
 export const MAX_BUDGET_RATIO = 0.80;
 export const RD_MONTHLY_CAP = 200000;
-export const NON_PROJECT_DEPTS = ["HR", "Finance", "Product+Marketing"];
+export const NON_PROJECT_DEPTS = ["HR", "Finance", "Product", "Marketing"];
 
 export const CURRENCIES = [
   { code: "INR", symbol: "₹", defaultRate: 1 },
@@ -66,7 +66,7 @@ export const ASSIGNABLE_ROLES = [
 ];
 
 export const DEPARTMENTS = [
-  "Executive", "Management", "Finance", "HR", "ODM", "Box Build", "Sales", "Product+Marketing", "Other",
+  "Executive", "Management", "Finance", "HR", "ODM", "Box Build", "Sales", "Product", "Marketing", "Other",
 ];
 
 // GSTIN regex (15 chars, Indian format)
