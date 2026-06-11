@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { SEED_BUDGETS, SEED_POS } from "./constants";
 import { db } from "./lib/db";
 import { signIn, signOut, getCurrentUser, listEmployees } from "./lib/auth";
 import { setRoster } from "./lib/roster";
@@ -57,46 +56,29 @@ export default function App() {
       setRequests([]);
     }
 
-    // Budgets (seed on first run if empty)
+    // Budgets
     try {
-      const b = await db.fetchBudgets();
-      if (b.length > 0) {
-        setBudgets(b);
-      } else {
-        setBudgets(SEED_BUDGETS);
-        try { await db.saveBudgets(SEED_BUDGETS); } catch (e) { console.log("Seed budget save failed:", e?.message); }
-      }
+      setBudgets(await db.fetchBudgets());
     } catch (err) {
-      console.log("Budget load failed, using seed:", err?.message);
-      setBudgets(SEED_BUDGETS);
+      console.log("Budget load failed:", err?.message);
+      setBudgets([]);
     }
 
-    // POs (seed on first run if empty)
+    // POs
     try {
-      const p = await db.fetchPOs();
-      if (p.length > 0) {
-        setPOs(p);
-      } else {
-        setPOs(SEED_POS);
-        try { await db.savePOs(SEED_POS); } catch (e) { console.log("Seed PO save failed:", e?.message); }
-      }
+      setPOs(await db.fetchPOs());
     } catch (err) {
-      console.log("PO load failed, using seed:", err?.message);
-      setPOs(SEED_POS);
+      console.log("PO load failed:", err?.message);
+      setPOs([]);
     }
 
     // PO Counter
     try {
       const c = await db.fetchPOCounter();
-      if (c != null) {
-        setPOCounter(c);
-      } else {
-        setPOCounter(2);
-        try { await db.savePOCounter(2); } catch {}
-      }
+      setPOCounter(c != null ? c : 0);
     } catch (err) {
-      console.log("PO counter load failed, using 2:", err?.message);
-      setPOCounter(2);
+      console.log("PO counter load failed, using 0:", err?.message);
+      setPOCounter(0);
     }
 
     // Notifications

@@ -41,16 +41,16 @@ function, and the Row Level Security policies.
 > history. The full data model and security design is documented in
 > [`docs/BACKEND_ARCHITECTURE.md`](docs/BACKEND_ARCHITECTURE.md).
 
-## 3. Seed the 21 users + demo data
+## 3. Seed the admin account + roles
 
 ```bash
 npm run seed
 ```
 
-This creates the 21 employee auth accounts (same emails/passwords as before),
-their `profiles` rows, and loads the demo budgets and purchase orders. It's
-idempotent — safe to re-run. (Budgets/POs also auto-seed on first app load if
-the tables are empty, so this step is mainly for the user accounts.)
+This provisions the dedicated admin account and the assignable role-groups. It
+does **not** create any employee accounts or demo data — employees register
+through self-service signup and are approved by the admin in the Admin Console.
+It's idempotent — safe to re-run.
 
 ## 4. Run the app
 
@@ -58,8 +58,9 @@ the tables are empty, so this step is mainly for the user accounts.)
 npm run dev
 ```
 
-Log in with any of the existing credentials (e.g. `saurav@elecbits.in` /
-`ceo123`). The "Show test credentials" panel still lists them all.
+Log in as the admin (username `admin`, password from `ADMIN_PASSWORD` — defaults
+to `admin@123`; change it for any real deployment) to approve employee signups.
+New employees create their own accounts via "Sign up" on the login page.
 
 ---
 
