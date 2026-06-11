@@ -8,7 +8,9 @@ export function MyApprovalsView({ user, requests, budgets, pos, poCounter, saveR
   const [typeTab, setTypeTab] = useState("payment");
   const [filter, setFilter] = useState("all");
 
-  const allItems = typeTab === "payment" ? requests : typeTab === "budget" ? budgets : pos;
+  // Scoped to the active department (user.dept) so each department tab shows only the
+  // approvals made in that department. No-op for single-department users.
+  const allItems = (typeTab === "payment" ? requests : typeTab === "budget" ? budgets : pos).filter(r => r.dept === user.dept);
   const myActionItems = allItems.filter(r => {
     const a = getUserActionsOnRequest(user, r);
     return a.approvals.length > 0 || a.rejections.length > 0;

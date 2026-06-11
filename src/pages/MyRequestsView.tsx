@@ -6,7 +6,9 @@ import { DrillDownModal } from "../requests/DrillDownModal";
 
 // ============ MY REQUESTS ============
 export function MyRequestsView({ user, requests, budgets, pos, poCounter, saveRequests, saveBudgets, savePOs, savePOCounter, addNotifications, showToast }) {
-  const myItems = [...requests, ...budgets, ...pos].filter(r => r.requesterId === user.id && r.type !== "RDCapRequest").sort((a, b) => +new Date(b.createdDate || b.approvedDate) - +new Date(a.createdDate || a.approvedDate));
+  // Scoped to the active department (user.dept), so a multi-department user sees only
+  // the requests they raised under the current tab. No-op for single-department users.
+  const myItems = [...requests, ...budgets, ...pos].filter(r => r.requesterId === user.id && r.dept === user.dept && r.type !== "RDCapRequest").sort((a, b) => +new Date(b.createdDate || b.approvedDate) - +new Date(a.createdDate || a.approvedDate));
   const pending = myItems.filter(r => !["Paid", "Rejected", "Cancelled", "Active", "Approved", "Closed"].includes(r.status));
   const completed = myItems.filter(r => ["Paid", "Active", "Approved", "Closed"].includes(r.status));
   const rejected = myItems.filter(r => r.status === "Rejected");

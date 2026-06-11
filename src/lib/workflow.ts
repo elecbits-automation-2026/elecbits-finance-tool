@@ -1,5 +1,6 @@
 import { VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
 import { getRoster } from "./roster";
+import { effectiveDepts } from "./access";
 
 // ============ APPROVAL WORKFLOW HELPERS ============
 // Routing is keyed off a department head's ROLE + SCOPE, never their user id, so any
@@ -16,7 +17,9 @@ function approverScopeCovers(approver, dept, isProject) {
     case "ODM-SALES": return dept === "ODM" || dept === "Sales";
     case "HR": return dept === "HR";
     case "BOXBUILD": return dept === "Box Build";
-    default: return Boolean(approver.dept) && approver.dept === dept;
+    // No special scope: the approver covers any department they belong to (primary
+    // or an admin-granted extra), so a multi-department head is routed work in each.
+    default: return effectiveDepts(approver).includes(dept);
   }
 }
 
@@ -143,5 +146,5 @@ export function getDeptHeadsForDept(dept, isProject = false) {
   if (dept === "Sales") return deptApprovers().filter(u => u.scope === "ODM-SALES");
   if (dept === "Box Build") return getRoster().filter(u => (u.role === "DeptApprover" && u.scope === "BOXBUILD") || u.role === "BoxBuildMidApprover");
   if (dept === "HR") return deptApprovers().filter(u => u.scope === "HR");
-  return deptApprovers().filter(u => u.dept === dept);
+  return deptApprovers().filter(u => effectiveDepts(u).includes(dept));
 }

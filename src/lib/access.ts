@@ -1,5 +1,15 @@
 // ============ ACCESS CONTROL ============
 
+// Every department a user belongs to: their primary `dept` plus any admin-granted
+// `extraDepts`. Used by approval ROUTING (workflow.ts) so a multi-department head
+// is reachable for work in any of their departments, regardless of which tab they
+// currently have open. A user's own dashboard view, by contrast, is scoped to the
+// single active-tab department (the dashboard passes that as `user.dept`).
+export function effectiveDepts(user) {
+  const extra = Array.isArray(user.extraDepts) ? user.extraDepts : [];
+  return user.dept ? [user.dept, ...extra.filter(d => d !== user.dept)] : extra;
+}
+
 // A department head's visibility is driven by their `scope` (a per-user mandate),
 // not their identity — sub-department scoping (ODM-PROJECT sees ODM projects only) or
 // a sanctioned cross-department bridge (ODM-SALES, the Sales head, also handles ODM

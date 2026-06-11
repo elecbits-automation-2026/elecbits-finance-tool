@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { LogOut, Bell, Shield, Clock, FileText, CheckSquare, PiggyBank, FileSignature, Plus, Target, TrendingUp, Building2, Users, Coins } from "lucide-react";
-import { canUserActOnRequest, getUserActionsOnRequest, isReadOnly } from "../lib/access";
+import { canUserActOnRequest, getUserActionsOnRequest, isReadOnly, effectiveDepts } from "../lib/access";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 import { NotificationPanel } from "../components/NotificationPanel";
 import { TabBar } from "../components/TabBar";
@@ -19,11 +19,26 @@ import { RDAllocationView } from "./RDAllocationView";
 
 // ============ DASHBOARD ============
 export function Dashboard({ user, requests, budgets, pos, poCounter, notifications, saveRequests, saveBudgets, savePOs, savePOCounter, saveNotifications, addNotifications, showToast, onLogout }) {
-  const inbox = [...requests, ...budgets, ...pos].filter(r => canUserActOnRequest(user, r));
-  // Read-only accounts only get the (dept-scoped) Budgets tab, so land them there.
-  const defaultView = isReadOnly(user) ? "budgets" : (user.role === "Employee" ? "my-requests" : (inbox.length > 0 ? "inbox" : "overview"));
-  const [view, setView] = useState(defaultView);
+  // Departments this user belongs to (primary + any admin-granted extras). A user
+  // with more than one gets a per-department tab bar; the active tab re-scopes the
+  // whole dashboard to that single department by passing it down as `user.dept`,
+  // so every existing view keeps working as if they were a single-department user.
+  const depts = effectiveDepts(user);
+  const [activeDept, setActiveDept] = useState(user.dept);
+  const effectiveUser = { ...user, dept: activeDept };
+
+  // Items in a given department that currently need THIS user's action — drives the
+  // inbox and the per-tab badge.
+  const actionable = (u) => [...requests, ...budgets, ...pos].filter(r => canUserActOnRequest(u, r));
+  const computeDefaultView = (inboxLen) => isReadOnly(user) ? "budgets" : (user.role === "Employee" ? "my-requests" : (inboxLen > 0 ? "inbox" : "overview"));
+  const inbox = actionable(effectiveUser);
+  const [view, setView] = useState(() => computeDefaultView(inbox.length));
   const [showNotifPanel, setShowNotifPanel] = useState(false);
+
+  // Badge shown on a non-active department tab: how many of its items await action.
+  const deptBadge = (d) => actionable({ ...user, dept: d }).length;
+  // Switch departments and land on that department's natural default view.
+  function switchDept(d) { setActiveDept(d); setView(computeDefaultView(actionable({ ...user, dept: d }).length)); }
 
   const myNotifs = notifications.filter(n => n.toUserId === user.id);
   const unreadCount = myNotifs.filter(n => !n.read).length;
@@ -68,13 +83,30 @@ export function Dashboard({ user, requests, budgets, pos, poCounter, notificatio
         <div className="max-w-7xl mx-auto px-4 py-2 flex items-center gap-2 flex-wrap">
           <Shield className={`w-4 h-4 text-${roleColors[user.role]}-700`} />
           <span className={`text-xs font-semibold text-${roleColors[user.role]}-900`}>{roleBadge[user.role]}</span>
-          <span className="text-xs text-slate-600">· Dept: <strong>{user.dept}</strong></span>
+          <span className="text-xs text-slate-600">· Dept: <strong>{activeDept}</strong></span>
           {user.role === "CEO" && <span className="text-xs text-slate-600">· Approves ≥ ₹5L</span>}
           {user.role === "VP" && <span className="text-xs text-slate-600">· Approves ≥ ₹1L</span>}
         </div>
       </div>
+      {depts.length > 1 && (
+        <div className="bg-white border-b border-slate-200">
+          <div className="max-w-7xl mx-auto px-4 flex items-center gap-1 overflow-x-auto">
+            <span className="text-[11px] font-semibold text-slate-400 mr-1 shrink-0 uppercase tracking-wide">Department</span>
+            {depts.map((d) => {
+              const isActive = d === activeDept;
+              const count = isActive ? 0 : deptBadge(d);
+              return (
+                <button key={d} onClick={() => switchDept(d)} className={`relative shrink-0 px-3 py-2 text-xs font-semibold border-b-2 -mb-px flex items-center gap-1.5 ${isActive ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
+                  {d}
+                  {count > 0 && <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full">{count > 9 ? "9+" : count}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <main className="max-w-7xl mx-auto px-4 py-5">
-        <UnifiedDashboard user={user} view={view} setView={setView} requests={requests} budgets={budgets} pos={pos} poCounter={poCounter} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} inbox={inbox} addNotifications={addNotifications} showToast={showToast} />
+        <UnifiedDashboard user={effectiveUser} view={view} setView={setView} requests={requests} budgets={budgets} pos={pos} poCounter={poCounter} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} inbox={inbox} addNotifications={addNotifications} showToast={showToast} />
       </main>
     </div>
   );
@@ -82,12 +114,16 @@ export function Dashboard({ user, requests, budgets, pos, poCounter, notificatio
 
 // ============ UNIFIED DASHBOARD ============
 function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCounter, saveRequests, saveBudgets, savePOs, savePOCounter, inbox, addNotifications, showToast }) {
-  const myItems = [...requests, ...budgets, ...pos].filter(r => r.requesterId === user.id && r.type !== "RDCapRequest");
+  // `user` here is the active-department view (effectiveUser), so `user.dept` is the
+  // active tab. Scope a user's own requests/approvals to it so each department tab is
+  // a self-contained dashboard. For single-department users this is a no-op.
+  const myItems = [...requests, ...budgets, ...pos].filter(r => r.requesterId === user.id && r.dept === user.dept && r.type !== "RDCapRequest");
   const canViewOrg = ["CEO", "VP", "SuperManager", "FinanceHead", "Accountant"].includes(user.role);
   const canSeeMyApprovals = ["DeptApprover", "BoxBuildMidApprover", "VP", "CEO", "FinanceHead", "SuperManager"].includes(user.role);
   const canViewReports = ["FinanceHead", "CEO", "VP", "SuperManager"].includes(user.role);
 
   const myApprovalItems = [...requests, ...budgets, ...pos].filter(r => {
+    if (r.dept !== user.dept) return false;
     const a = getUserActionsOnRequest(user, r);
     return a.approvals.length > 0 || a.rejections.length > 0;
   });

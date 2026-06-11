@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { LogOut, ShieldCheck, RefreshCw, Mail, Clock, Search, Users, CheckCircle2, Ban, KeyRound, Copy, Check, RotateCcw, Hourglass, X, Trash2, AlertTriangle } from "lucide-react";
-import { listEmployees, listRoles, setEmployeeRole, setEmployeeDept, setEmployeeStatus, openReactivation, deactivateEmployee, deleteEmployee, getAccessPasswords } from "../lib/auth";
+import { listEmployees, listRoles, setEmployeeRole, setEmployeeDept, setEmployeeExtraDepts, setEmployeeStatus, openReactivation, deactivateEmployee, deleteEmployee, getAccessPasswords } from "../lib/auth";
 import { DEPARTMENTS } from "../constants";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 
@@ -86,6 +86,19 @@ export function AdminConsole({ user, onLogout, showToast }) {
     if (!r.success) { if (showToast) showToast(`Could not update department: ${r.error}`, "error"); return; }
     setEmployees((prev) => prev.map((e) => (e.authId === emp.authId ? { ...e, dept } : e)));
     if (showToast) showToast(`${emp.name} is now in ${dept}.`, "success");
+  }
+
+  // Add or remove an ADDITIONAL department for an employee (beyond their primary
+  // dept). A head with extra departments approves/sees work in all of them and
+  // gets a per-department tab in the dashboard. Admin-only.
+  async function changeExtraDepts(emp, nextList: string[]) {
+    const list = Array.from(new Set(nextList.filter(Boolean)));
+    setBusyId(emp.authId);
+    const r = await setEmployeeExtraDepts(emp.authId, list);
+    setBusyId(null);
+    if (!r.success) { if (showToast) showToast(`Could not update departments: ${r.error}`, "error"); return; }
+    setEmployees((prev) => prev.map((e) => (e.authId === emp.authId ? { ...e, extraDepts: list } : e)));
+    if (showToast) showToast(`Updated additional departments for ${emp.name}.`, "success");
   }
 
   // Locally patch one employee's status after a successful action.
@@ -288,6 +301,21 @@ export function AdminConsole({ user, onLogout, showToast }) {
                         {/* Surface any legacy department not in the catalog so it isn't silently lost. */}
                         {emp.dept && !DEPARTMENTS.includes(emp.dept) && <option value={emp.dept}>{emp.dept}</option>}
                       </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Additional departments</label>
+                      <div className="flex items-center gap-1 flex-wrap min-w-[160px]">
+                        {(emp.extraDepts || []).map((d) => (
+                          <span key={d} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-800">
+                            {d}
+                            <button onClick={() => changeExtraDepts(emp, (emp.extraDepts || []).filter((x) => x !== d))} disabled={busy} className="text-blue-500 hover:text-red-600 disabled:opacity-50" title={`Remove ${d}`}><X className="w-3 h-3" /></button>
+                          </span>
+                        ))}
+                        <select value="" disabled={busy} onChange={(e) => { if (e.target.value) changeExtraDepts(emp, [...(emp.extraDepts || []), e.target.value]); }} className="text-xs px-2 py-1.5 border border-slate-300 rounded-lg bg-white disabled:opacity-50">
+                          <option value="">+ Add…</option>
+                          {DEPARTMENTS.filter((d) => d !== emp.dept && !(emp.extraDepts || []).includes(d)).map((d) => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </div>
                     </div>
                     <div className="mt-4 flex items-center gap-1.5">
                       {emp.status === "active" && (
