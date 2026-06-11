@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { XCircle, CheckCircle, Key } from "lucide-react";
-import { USERS } from "../constants";
+import { XCircle, CheckCircle } from "lucide-react";
 import { signUp, requestReactivation } from "../lib/auth";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 
@@ -17,7 +16,6 @@ export function LoginPage({ onLogin }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [showHints, setShowHints] = useState(false);
 
   function switchMode(next) {
     setMode(next);
@@ -64,18 +62,9 @@ export function LoginPage({ onLogin }) {
     setMode("signin");
   }
 
-  const groupedUsers = [
-    { role: "CEO", emoji: "🎯", users: USERS.filter(u => u.role === "CEO") },
-    { role: "VP", emoji: "⭐", users: USERS.filter(u => u.role === "VP") },
-    { role: "Special Access Managers", emoji: "🔐", users: USERS.filter(u => u.role === "SuperManager") },
-    { role: "Finance", emoji: "💰", users: USERS.filter(u => u.role === "FinanceHead" || u.role === "Accountant") },
-    { role: "Department Heads", emoji: "👔", users: USERS.filter(u => u.role === "DeptApprover" || u.role === "BoxBuildMidApprover") },
-    { role: "Employees", emoji: "👤", users: USERS.filter(u => u.role === "Employee") },
-  ];
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-5xl grid md:grid-cols-2 gap-4">
+      <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl p-8 shadow-2xl">
           <div className="mb-6 pb-4 border-b border-slate-100">
             <ElecbitsLogo size="lg" showTagline />
@@ -130,33 +119,7 @@ export function LoginPage({ onLogin }) {
                 <>Already have an account? <button onClick={() => switchMode("signin")} className="text-blue-600 hover:text-blue-700 font-semibold">Sign in</button></>
               )}
             </div>
-            {mode === "signin" && <button onClick={() => setShowHints(!showHints)} className="w-full text-xs text-blue-600 hover:text-blue-700 font-medium">{showHints ? "Hide" : "Show"} test credentials</button>}
           </div>
-        </div>
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-          <div className="flex items-center gap-2 mb-3">
-            <Key className="w-4 h-4 text-white" />
-            <h3 className="text-white font-bold text-sm">Quick Login (21 Users)</h3>
-          </div>
-          <p className="text-white/70 text-xs mb-4">Click any user to auto-login.</p>
-          {!showHints ? (
-            <div className="text-white/60 text-sm text-center py-8">Click "Show test credentials" to see all users</div>
-          ) : (
-            <div className="space-y-1.5 max-h-[500px] overflow-y-auto pr-1">
-              {groupedUsers.map((g) => g.users.length > 0 && (
-                <div key={g.role}>
-                  <div className="text-white/80 text-xs font-bold mt-2 mb-1">{g.emoji} {g.role}</div>
-                  {g.users.map((u) => (
-                    <button key={u.email} onClick={() => setTimeout(() => onLogin(u.email, u.password), 50)} className="w-full text-left bg-white/5 hover:bg-white/15 rounded-lg px-3 py-2 text-xs transition border border-white/10">
-                      <div className="text-white font-semibold">{u.name}</div>
-                      <div className="text-white/60">{u.designation} · {u.dept}</div>
-                      <div className="text-blue-200 font-mono text-[10px] mt-0.5">{u.email}</div>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
