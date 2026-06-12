@@ -45,10 +45,44 @@ guard now exists).
 | Budgets stamp `isProject`, and approvers are computed with the same flag, so the ODM-PROJECT head can SEE everything they must approve | `NewBudgetRequestForm.tsx` |
 
 **Remaining (accepted/known):**
-- `SM_OVERRIDE_SKIPS_ALL` (MEDIUM, by design): one SuperManager still takes any budget straight to Active with no countersign — policy decision pending (§4).
+- `SM_OVERRIDE_SKIPS_ALL` (MEDIUM, by design): one SuperManager still takes any budget straight to Active with no countersign — policy decision pending (§4). Enforced identically server-side (the override is an allowed transition, not a hole).
 - `BLIND_APPROVER` + `TAB_LOCKED_APPROVER` for the multi-dept head `U-MULTI` only: they can act on Product requests only from the Product tab, and primary-tab visibility hides them — tab-UX asymmetry, not a leak (§4).
-- **Everything is still client-side only** — the RLS caveat above stands unchanged (§6 item 8).
-- Policy consequence: the Finance Head (role `FinanceHead`, not a `DeptApprover`) can no longer raise Monthly budgets at all — the stated "Heads only" rule is now enforced for them too. If Finance needs Monthly budgets, a Finance `DeptApprover` must be configured.
+
+### Server-side enforcement landed (migration 0011) — the §6 item 8 caveat is now CLOSED
+
+The browser guards above are now **also enforced in Postgres** for the `budgets`
+table, so an API-level caller bypassing the UI is bound by the same workflow.
+
+- **`supabase/migrations/0011_budget_workflow_rls.sql`** (also merged into
+  `supabase/schema.sql`): replaces the permissive `budgets using(true)/check(true)`
+  policy with (a) a `budgets_guard` AFTER INSERT/UPDATE/DELETE trigger that mirrors
+  `getEligibleDeptApprovers` / `computeNextStage` / `canUserActOnRequest` and the
+  `submit()` raise gates — forged `requesterId`, self-approval, hand-picked approver
+  lists, stage skips, mid-approval amount tampering, forged history attribution,
+  cross-department extensions, the 80% and R&D caps, and born-Active/born-stuck
+  requests are all rejected in the database; (b) a scoped `budgets_select` policy
+  (company-wide finance/exec roles see all, others see their own departments +
+  their own requests + sanctioned ODM/Sales bridge); (c) a `budgets_delete` policy
+  limiting deletes to SuperManagers on R&D-cap config rows. Service-role/seed
+  sessions (`auth.uid() is null`) and the `Admin` console role bypass the trigger.
+- **`src/lib/db.ts` + `src/App.tsx`**: budget saves switched from
+  replace-the-whole-collection to a **diff-based save** (`saveBudgetsDiff`) that
+  writes only the rows this action changed and surfaces a server rejection as a
+  toast + state re-sync. The old model re-upserted every row on each save, which
+  would trip the trigger on other users' in-flight rows.
+- **Verified** by `scripts/test-budget-rls.sql` (run via `bash scripts/test-budget-rls.sh`):
+  boots a throwaway `postgres:16` with a Supabase auth stub, applies the real
+  `schema.sql`, and runs **21 raw-SQL attacks (all blocked) + 25 legitimate flows
+  (all allowed)** as authenticated sessions — i.e. exactly what a UI-bypassing
+  caller can attempt. All pass.
+
+**Out of scope of 0011 (still client-side only):** the `requests` (payments) and
+`pos` tables keep `using(true)/check(true)`. The same trigger pattern should be
+extended to them next; this migration covers the budget flow that was audited.
+
+Policy consequence (unchanged): the Finance Head (role `FinanceHead`, not a
+`DeptApprover`) can no longer raise Monthly budgets — enforced on both sides now.
+If Finance needs Monthly budgets, configure a Finance `DeptApprover`.
 
 ---
 

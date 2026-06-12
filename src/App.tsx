@@ -91,7 +91,22 @@ export default function App() {
   }
 
   async function saveRequests(v) { setRequests(v); try { await db.saveRequests(v); } catch (e) { console.error("saveRequests failed:", e?.message); } }
-  async function saveBudgets(v) { setBudgets(v); try { await db.saveBudgets(v); } catch (e) { console.error("saveBudgets failed:", e?.message); } }
+  // Budgets are server-enforced (migration 0011): write only the rows this
+  // call actually changed, so the save carries exactly the caller's intent and
+  // never re-asserts other users' rows against the workflow triggers.
+  async function saveBudgets(v) {
+    const prev = budgets;
+    setBudgets(v);
+    try {
+      await db.saveBudgetsDiff(prev, v);
+    } catch (e) {
+      // The server rejected the write (workflow trigger): surface it and
+      // re-sync local state so the UI doesn't show a change that never stuck.
+      console.error("saveBudgets failed:", e?.message);
+      showToast("Save rejected by server: " + (e?.message || "unknown error"), "error");
+      try { setBudgets(await db.fetchBudgets()); } catch { /* keep optimistic state */ }
+    }
+  }
   async function savePOs(v) { setPOs(v); try { await db.savePOs(v); } catch (e) { console.error("savePOs failed:", e?.message); } }
   async function savePOCounter(v) { setPOCounter(v); try { await db.savePOCounter(v); } catch (e) { console.error("savePOCounter failed:", e?.message); } }
   async function saveNotifications(v) { setNotifications(v); try { await db.saveNotifications(v); } catch (e) { console.error("saveNotifications failed:", e?.message); } }
