@@ -1,0 +1,1030 @@
+====================================================================================================
+ELECBITS FINANCE TOOL — BUDGET ALLOCATION WORKFLOW TEST
+Thresholds: VP=₹1L  CEO=₹5L  MaxBudgetRatio=0.8  Month=2025-12
+Roster: 27 users across 10 departments
+====================================================================================================
+
+### SECTION A — DETAILED TRACES (special users & boundaries) ###
+
+--- U-HR-E/Monthly/₹0.50L — HR employee (gate-bypass candidate) [below 1L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-HR-E/Monthly/₹1L — HR employee (gate-bypass candidate) [exactly 1L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-HR-E/Monthly/₹2.50L — HR employee (gate-bypass candidate) [1L–5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-HR-E/Monthly/₹5L — HR employee (gate-bypass candidate) [exactly 5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-HR-E/Monthly/₹7.50L — HR employee (gate-bypass candidate) [above 5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-HR-HEAD/Monthly/₹0.50L — HR head raises own dept Monthly [below 1L] ---
+    raised: selectedApprovers=[] initialStage=FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-HR-HEAD/Monthly/₹1L — HR head raises own dept Monthly [exactly 1L] ---
+    raised: selectedApprovers=[] initialStage=VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-HR-HEAD/Monthly/₹2.50L — HR head raises own dept Monthly [1L–5L] ---
+    raised: selectedApprovers=[] initialStage=VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-HR-HEAD/Monthly/₹5L — HR head raises own dept Monthly [exactly 5L] ---
+    raised: selectedApprovers=[] initialStage=VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-HR-HEAD/Monthly/₹7.50L — HR head raises own dept Monthly [above 5L] ---
+    raised: selectedApprovers=[] initialStage=VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-HR-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-ODM-E/Project/₹0.50L — ODM employee client project [below 1L] ---
+    raised: selectedApprovers=[U-ODM-ALL, U-ODM-PROJ] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-ODM-ALL, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-ALL approves: DeptApproval → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head (1/2)"
+      canACT: U-SM1, U-SM2, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-PROJ approves: DeptApproval → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-ODM-ALL) → DeptApproval(U-ODM-PROJ) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-ODM-E/Project/₹1L — ODM employee client project [exactly 1L] ---
+    raised: selectedApprovers=[U-ODM-ALL, U-ODM-PROJ] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-ODM-ALL, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-ALL approves: DeptApproval → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head (1/2)"
+      canACT: U-SM1, U-SM2, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-PROJ approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-ODM-ALL) → DeptApproval(U-ODM-PROJ) → VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-ODM-E/Project/₹2.50L — ODM employee client project [1L–5L] ---
+    raised: selectedApprovers=[U-ODM-ALL, U-ODM-PROJ] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-ODM-ALL, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-ALL approves: DeptApproval → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head (1/2)"
+      canACT: U-SM1, U-SM2, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-PROJ approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-ODM-ALL) → DeptApproval(U-ODM-PROJ) → VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-ODM-E/Project/₹5L — ODM employee client project [exactly 5L] ---
+    raised: selectedApprovers=[U-ODM-ALL, U-ODM-PROJ] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-ODM-ALL, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-ALL approves: DeptApproval → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head (1/2)"
+      canACT: U-SM1, U-SM2, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-PROJ approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-ODM-ALL) → DeptApproval(U-ODM-PROJ) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-ODM-E/Project/₹7.50L — ODM employee client project [above 5L] ---
+    raised: selectedApprovers=[U-ODM-ALL, U-ODM-PROJ] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-ODM-ALL, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-ALL approves: DeptApproval → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head (1/2)"
+      canACT: U-SM1, U-SM2, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-PROJ approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-ODM-ALL) → DeptApproval(U-ODM-PROJ) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-ODM-ALL/Monthly/₹0.50L — ODM head Monthly (form passes isProject=true) [below 1L] ---
+    raised: selectedApprovers=[] initialStage=FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-ODM-ALL/Monthly/₹1L — ODM head Monthly (form passes isProject=true) [exactly 1L] ---
+    raised: selectedApprovers=[] initialStage=VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-ODM-ALL/Monthly/₹2.50L — ODM head Monthly (form passes isProject=true) [1L–5L] ---
+    raised: selectedApprovers=[] initialStage=VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-ODM-ALL/Monthly/₹5L — ODM head Monthly (form passes isProject=true) [exactly 5L] ---
+    raised: selectedApprovers=[] initialStage=VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-ODM-ALL/Monthly/₹7.50L — ODM head Monthly (form passes isProject=true) [above 5L] ---
+    raised: selectedApprovers=[] initialStage=VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-SALES-E/Project/₹0.50L — Sales employee — routing check [below 1L] ---
+    raised: selectedApprovers=[U-SALES-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-SALES-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-SALES-HEAD approves: DeptApproval → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-SALES-HEAD) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-SALES-E/Project/₹1L — Sales employee — routing check [exactly 1L] ---
+    raised: selectedApprovers=[U-SALES-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-SALES-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-SALES-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-SALES-HEAD) → VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-SALES-E/Project/₹2.50L — Sales employee — routing check [1L–5L] ---
+    raised: selectedApprovers=[U-SALES-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-SALES-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-SALES-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-SALES-HEAD) → VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-SALES-E/Project/₹5L — Sales employee — routing check [exactly 5L] ---
+    raised: selectedApprovers=[U-SALES-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-SALES-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-SALES-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-SALES-HEAD) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-SALES-E/Project/₹7.50L — Sales employee — routing check [above 5L] ---
+    raised: selectedApprovers=[U-SALES-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-SALES-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-SALES-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-E
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-SALES-HEAD) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-SALES-BR/Project/₹0.50L — Sales employee with ODM-SALES bridge scope [below 1L] ---
+    raised: selectedApprovers=[U-SALES-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-SALES-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-SALES-HEAD approves: DeptApproval → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-SALES-HEAD) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-SALES-BR/Project/₹1L — Sales employee with ODM-SALES bridge scope [exactly 1L] ---
+    raised: selectedApprovers=[U-SALES-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-SALES-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-SALES-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-SALES-HEAD) → VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-SALES-BR/Project/₹2.50L — Sales employee with ODM-SALES bridge scope [1L–5L] ---
+    raised: selectedApprovers=[U-SALES-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-SALES-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-SALES-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-SALES-HEAD) → VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-SALES-BR/Project/₹5L — Sales employee with ODM-SALES bridge scope [exactly 5L] ---
+    raised: selectedApprovers=[U-SALES-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-SALES-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-SALES-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-SALES-HEAD) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-SALES-BR/Project/₹7.50L — Sales employee with ODM-SALES bridge scope [above 5L] ---
+    raised: selectedApprovers=[U-SALES-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-SALES-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-SALES-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-SALES-HEAD, U-SALES-BR
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-SALES-HEAD) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-BB-PM/Project/₹0.50L — Box Build Project Manager (BoxBuildMid pre-stage) [below 1L] ---
+    raised: selectedApprovers=[U-BB-HEAD] initialStage=BoxBuildMid
+    stage=BoxBuildMid   status="Pending Delivery Head"
+      canACT: U-SM1, U-SM2, U-BB-MID
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-BB-MID approves: BoxBuildMid → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-BB-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-BB-HEAD approves: DeptApproval → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-FH approves: FinanceHead → Active
+    PATH: BoxBuildMid(U-BB-MID) → DeptApproval(U-BB-HEAD) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-BB-PM/Project/₹1L — Box Build Project Manager (BoxBuildMid pre-stage) [exactly 1L] ---
+    raised: selectedApprovers=[U-BB-HEAD] initialStage=BoxBuildMid
+    stage=BoxBuildMid   status="Pending Delivery Head"
+      canACT: U-SM1, U-SM2, U-BB-MID
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-BB-MID approves: BoxBuildMid → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-BB-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-BB-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-FH approves: FinanceHead → Active
+    PATH: BoxBuildMid(U-BB-MID) → DeptApproval(U-BB-HEAD) → VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-BB-PM/Project/₹2.50L — Box Build Project Manager (BoxBuildMid pre-stage) [1L–5L] ---
+    raised: selectedApprovers=[U-BB-HEAD] initialStage=BoxBuildMid
+    stage=BoxBuildMid   status="Pending Delivery Head"
+      canACT: U-SM1, U-SM2, U-BB-MID
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-BB-MID approves: BoxBuildMid → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-BB-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-BB-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-FH approves: FinanceHead → Active
+    PATH: BoxBuildMid(U-BB-MID) → DeptApproval(U-BB-HEAD) → VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-BB-PM/Project/₹5L — Box Build Project Manager (BoxBuildMid pre-stage) [exactly 5L] ---
+    raised: selectedApprovers=[U-BB-HEAD] initialStage=BoxBuildMid
+    stage=BoxBuildMid   status="Pending Delivery Head"
+      canACT: U-SM1, U-SM2, U-BB-MID
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-BB-MID approves: BoxBuildMid → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-BB-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-BB-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-FH approves: FinanceHead → Active
+    PATH: BoxBuildMid(U-BB-MID) → DeptApproval(U-BB-HEAD) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-BB-PM/Project/₹7.50L — Box Build Project Manager (BoxBuildMid pre-stage) [above 5L] ---
+    raised: selectedApprovers=[U-BB-HEAD] initialStage=BoxBuildMid
+    stage=BoxBuildMid   status="Pending Delivery Head"
+      canACT: U-SM1, U-SM2, U-BB-MID
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-BB-MID approves: BoxBuildMid → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-BB-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-BB-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-PM
+      -> U-FH approves: FinanceHead → Active
+    PATH: BoxBuildMid(U-BB-MID) → DeptApproval(U-BB-HEAD) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-BB-E/Project/₹0.50L — Box Build regular employee [below 1L] ---
+    raised: selectedApprovers=[U-BB-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-BB-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-BB-HEAD approves: DeptApproval → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-BB-HEAD) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-BB-E/Project/₹1L — Box Build regular employee [exactly 1L] ---
+    raised: selectedApprovers=[U-BB-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-BB-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-BB-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-BB-HEAD) → VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-BB-E/Project/₹2.50L — Box Build regular employee [1L–5L] ---
+    raised: selectedApprovers=[U-BB-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-BB-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-BB-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-VP approves: VP → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-BB-HEAD) → VP(U-VP) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-BB-E/Project/₹5L — Box Build regular employee [exactly 5L] ---
+    raised: selectedApprovers=[U-BB-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-BB-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-BB-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-BB-HEAD) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-BB-E/Project/₹7.50L — Box Build regular employee [above 5L] ---
+    raised: selectedApprovers=[U-BB-HEAD] initialStage=DeptApproval
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-BB-HEAD
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-BB-HEAD approves: DeptApproval → VP
+    stage=VP            status="Pending VP"
+      canACT: U-VP, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-VP approves: VP → CEO
+    stage=CEO           status="Pending CEO"
+      canACT: U-CEO, U-SM1, U-SM2
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-CEO approves: CEO → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-BB-HEAD, U-BB-MID, U-BB-E
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-BB-HEAD) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- U-PROD-E/Monthly/₹0.50L — Product employee (multi-dept head consensus) [below 1L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-PROD-E/Monthly/₹1L — Product employee (multi-dept head consensus) [exactly 1L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-PROD-E/Monthly/₹2.50L — Product employee (multi-dept head consensus) [1L–5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-PROD-E/Monthly/₹5L — Product employee (multi-dept head consensus) [exactly 5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-PROD-E/Monthly/₹7.50L — Product employee (multi-dept head consensus) [above 5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-MKT-E/Monthly/₹0.50L — Marketing employee (multi-dept head primary) [below 1L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-MKT-E/Monthly/₹1L — Marketing employee (multi-dept head primary) [exactly 1L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-MKT-E/Monthly/₹2.50L — Marketing employee (multi-dept head primary) [1L–5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-MKT-E/Monthly/₹5L — Marketing employee (multi-dept head primary) [exactly 5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-MKT-E/Monthly/₹7.50L — Marketing employee (multi-dept head primary) [above 5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-FIN-E/Monthly/₹0.50L — Finance employee (FinanceHead double-gate) [below 1L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-FIN-E/Monthly/₹1L — Finance employee (FinanceHead double-gate) [exactly 1L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-FIN-E/Monthly/₹2.50L — Finance employee (FinanceHead double-gate) [1L–5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-FIN-E/Monthly/₹5L — Finance employee (FinanceHead double-gate) [exactly 5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-FIN-E/Monthly/₹7.50L — Finance employee (FinanceHead double-gate) [above 5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-FH/Monthly/₹0.50L — Finance Head raises own Monthly [below 1L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-FH/Monthly/₹1L — Finance Head raises own Monthly [exactly 1L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-FH/Monthly/₹2.50L — Finance Head raises own Monthly [1L–5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-FH/Monthly/₹5L — Finance Head raises own Monthly [exactly 5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-FH/Monthly/₹7.50L — Finance Head raises own Monthly [above 5L] ---
+    RAISE BLOCKED: submit(): only Department Heads can raise Monthly Budgets
+
+--- U-OTH-E/Project/₹0.50L — 'Other' dept — no head exists [below 1L] ---
+    RAISE BLOCKED: submit(): no approver configured for this department
+
+--- U-OTH-E/Project/₹1L — 'Other' dept — no head exists [exactly 1L] ---
+    RAISE BLOCKED: submit(): no approver configured for this department
+
+--- U-OTH-E/Project/₹2.50L — 'Other' dept — no head exists [1L–5L] ---
+    RAISE BLOCKED: submit(): no approver configured for this department
+
+--- U-OTH-E/Project/₹5L — 'Other' dept — no head exists [exactly 5L] ---
+    RAISE BLOCKED: submit(): no approver configured for this department
+
+--- U-OTH-E/Project/₹7.50L — 'Other' dept — no head exists [above 5L] ---
+    RAISE BLOCKED: submit(): no approver configured for this department
+
+--- U-EXEC-E/Project/₹0.50L — Executive dept employee — no approver branch [below 1L] ---
+    RAISE BLOCKED: submit(): no approver configured for this department
+
+--- U-EXEC-E/Project/₹1L — Executive dept employee — no approver branch [exactly 1L] ---
+    RAISE BLOCKED: submit(): no approver configured for this department
+
+--- U-EXEC-E/Project/₹2.50L — Executive dept employee — no approver branch [1L–5L] ---
+    RAISE BLOCKED: submit(): no approver configured for this department
+
+--- U-EXEC-E/Project/₹5L — Executive dept employee — no approver branch [exactly 5L] ---
+    RAISE BLOCKED: submit(): no approver configured for this department
+
+--- U-EXEC-E/Project/₹7.50L — Executive dept employee — no approver branch [above 5L] ---
+    RAISE BLOCKED: submit(): no approver configured for this department
+
+
+### SECTION B — R&D CAP ALLOCATION FLOW (ODM) ###
+
+--- B1: ODM employee R&D 50k against 2L allocation ---
+    stage=DeptApproval  status="Pending Dept Head"
+      canACT: U-SM1, U-SM2, U-ODM-ALL, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-ALL approves: DeptApproval → DeptApproval
+    stage=DeptApproval  status="Pending Dept Head (1/2)"
+      canACT: U-SM1, U-SM2, U-ODM-PROJ
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-ODM-PROJ approves: DeptApproval → FinanceHead
+    stage=FinanceHead   status="Pending Finance Head"
+      canACT: U-SM1, U-SM2, U-FH
+      canSEE: U-CEO, U-VP, U-SM1, U-SM2, U-FH, U-ACC, U-ODM-ALL, U-ODM-PROJ, U-ODM-E, U-SALES-HEAD
+      -> U-FH approves: FinanceHead → Active
+    PATH: DeptApproval(U-ODM-ALL) → DeptApproval(U-ODM-PROJ) → FinanceHead(U-FH) → ACTIVE   FINAL: Active
+
+--- B2: second R&D 1.8L — should exceed remaining 1.5L ---
+    BLOCKED as expected: submit(): exceeds R&D allocation (avail ₹1.50L)
+
+--- B3: R&D with NO allocation (dept never got a cap) ---
+    BLOCKED as expected: submit(): no R&D allocation for this dept+month (RDCapRequest path)
+
+--- B4: non-ODM user raising R&D (Sales employee) ---
+    BLOCKED as expected: submit(): only ODM can raise R&D budgets
+
+
+### SECTION C — 80% CLIENT-ORDER CAP ###
+--- C1: order 10L, budget 8.5L (>80%) ---
+    BLOCKED as expected: submit(): exceeds 80% of client order (max ₹8L)
+--- C2: order 10L, budget 8L (=80%, allowed) ---
+    OK, raised. PATH: DeptApproval(U-ODM-ALL) → DeptApproval(U-ODM-PROJ) → VP(U-VP) → CEO(U-CEO) → FinanceHead(U-FH) → ACTIVE FINAL: Active (8L ≥ 5L tier)
+--- C3: extension blowing combined cap: parent 10L/order 20L (cap 16L), ext 6.5L ---
+    BLOCKED as expected: submit(): extension exceeds combined 80% cap
+
+
+### SECTION D — OVERRIDES, REJECTION, DOUBLE-APPROVAL ###
+--- D1: SuperManager override at DeptApproval on a 2.5L budget ---
+    U-SM1 approves at DeptApproval → Active (skips VP and FinanceHead entirely)
+--- D2: rejection at VP stage ---
+    after dept approvals: VP
+    after rejection: status=Rejected; users who can still act: (none — correct)
+--- D3: same dept approver approving twice (multi-approver consensus) ---
+    ODM project: selectedApprovers=[U-ODM-ALL, U-ODM-PROJ] (consensus of 2)
+    after U-ODM-ALL approves: Pending Dept Head (1/2)
+    U-ODM-ALL tries to approve again: canAct=false (blocked — correct)
+    after U-ODM-PROJ approves: FinanceHead (consensus complete)
+--- D4: read-only + no-dept users ---
+    U-RO raise: submit(): read-only account cannot raise requests
+    U-NODEPT raise: submit(): no department assigned
+    U-RO can act on any in-flight request: false
+
+
+### SECTION E — FULL MATRIX (every user × Monthly/Project/Extension × 50k/2.5L/7.5L) ###
+user            type       amount   result
+--------------------------------------------------------------------------------------------------------------
+U-CEO           Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-CEO           Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-CEO           Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-CEO           Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-CEO           Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-CEO           Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-CEO           Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-CEO           Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-CEO           Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-VP            Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-VP            Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-VP            Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-VP            Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-VP            Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-VP            Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-VP            Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-VP            Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-VP            Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-EXEC-E        Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-EXEC-E        Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-EXEC-E        Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-EXEC-E        Project    ₹0.50L   BLOCKED — submit(): no approver configured for this department
+U-EXEC-E        Project    ₹2.50L   BLOCKED — submit(): no approver configured for this department
+U-EXEC-E        Project    ₹7.50L   BLOCKED — submit(): no approver configured for this department
+U-EXEC-E        Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-EXEC-E        Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-EXEC-E        Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SM1           Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SM1           Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SM1           Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SM1           Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-SM1           Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-SM1           Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-SM1           Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SM1           Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SM1           Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SM2           Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SM2           Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SM2           Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SM2           Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-SM2           Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-SM2           Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-SM2           Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SM2           Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SM2           Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-FH            Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-FH            Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-FH            Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-FH            Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-FH            Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-FH            Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-FH            Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-FH            Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-FH            Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-ACC           Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-ACC           Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-ACC           Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-ACC           Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-ACC           Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-ACC           Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-ACC           Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-ACC           Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-ACC           Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-FIN-E         Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-FIN-E         Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-FIN-E         Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-FIN-E         Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-FIN-E         Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-FIN-E         Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-FIN-E         Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-FIN-E         Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-FIN-E         Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-HR-HEAD       Monthly    ₹0.50L   FinanceHead(U-FH)→ACTIVE
+U-HR-HEAD       Monthly    ₹2.50L   VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-HR-HEAD       Monthly    ₹7.50L   VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-HR-HEAD       Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-HR-HEAD       Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-HR-HEAD       Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-HR-HEAD       Extension  ₹0.50L   BLOCKED — submit(): cannot extend a ODM project from HR (own-department projects only)
+U-HR-HEAD       Extension  ₹2.50L   BLOCKED — submit(): cannot extend a ODM project from HR (own-department projects only)
+U-HR-HEAD       Extension  ₹7.50L   BLOCKED — submit(): cannot extend a ODM project from HR (own-department projects only)
+U-HR-E          Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-HR-E          Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-HR-E          Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-HR-E          Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-HR-E          Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-HR-E          Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-HR-E          Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-HR-E          Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-HR-E          Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-ODM-ALL       Monthly    ₹0.50L   FinanceHead(U-FH)→ACTIVE
+U-ODM-ALL       Monthly    ₹2.50L   VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-ODM-ALL       Monthly    ₹7.50L   VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-ODM-ALL       Project    ₹0.50L   DeptApproval(U-ODM-PROJ)→FinanceHead(U-FH)→ACTIVE
+U-ODM-ALL       Project    ₹2.50L   DeptApproval(U-ODM-PROJ)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-ODM-ALL       Project    ₹7.50L   DeptApproval(U-ODM-PROJ)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-ODM-ALL       Extension  ₹0.50L   DeptApproval(U-ODM-PROJ)→FinanceHead(U-FH)→ACTIVE
+U-ODM-ALL       Extension  ₹2.50L   DeptApproval(U-ODM-PROJ)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-ODM-ALL       Extension  ₹7.50L   BLOCKED — submit(): extension exceeds combined 80% cap
+U-ODM-PROJ      Monthly    ₹0.50L   DeptApproval(U-ODM-ALL)→FinanceHead(U-FH)→ACTIVE
+U-ODM-PROJ      Monthly    ₹2.50L   DeptApproval(U-ODM-ALL)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-ODM-PROJ      Monthly    ₹7.50L   DeptApproval(U-ODM-ALL)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-ODM-PROJ      Project    ₹0.50L   DeptApproval(U-ODM-ALL)→FinanceHead(U-FH)→ACTIVE
+U-ODM-PROJ      Project    ₹2.50L   DeptApproval(U-ODM-ALL)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-ODM-PROJ      Project    ₹7.50L   DeptApproval(U-ODM-ALL)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-ODM-PROJ      Extension  ₹0.50L   DeptApproval(U-ODM-ALL)→FinanceHead(U-FH)→ACTIVE
+U-ODM-PROJ      Extension  ₹2.50L   DeptApproval(U-ODM-ALL)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-ODM-PROJ      Extension  ₹7.50L   BLOCKED — submit(): extension exceeds combined 80% cap
+U-ODM-E         Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-ODM-E         Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-ODM-E         Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-ODM-E         Project    ₹0.50L   DeptApproval(U-ODM-ALL)→DeptApproval(U-ODM-PROJ)→FinanceHead(U-FH)→ACTIVE
+U-ODM-E         Project    ₹2.50L   DeptApproval(U-ODM-ALL)→DeptApproval(U-ODM-PROJ)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-ODM-E         Project    ₹7.50L   DeptApproval(U-ODM-ALL)→DeptApproval(U-ODM-PROJ)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-ODM-E         Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-ODM-E         Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-ODM-E         Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SALES-HEAD    Monthly    ₹0.50L   FinanceHead(U-FH)→ACTIVE
+U-SALES-HEAD    Monthly    ₹2.50L   VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-SALES-HEAD    Monthly    ₹7.50L   VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-SALES-HEAD    Project    ₹0.50L   FinanceHead(U-FH)→ACTIVE
+U-SALES-HEAD    Project    ₹2.50L   VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-SALES-HEAD    Project    ₹7.50L   VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-SALES-HEAD    Extension  ₹0.50L   FinanceHead(U-FH)→ACTIVE
+U-SALES-HEAD    Extension  ₹2.50L   VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-SALES-HEAD    Extension  ₹7.50L   BLOCKED — submit(): extension exceeds combined 80% cap
+U-SALES-E       Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SALES-E       Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SALES-E       Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SALES-E       Project    ₹0.50L   DeptApproval(U-SALES-HEAD)→FinanceHead(U-FH)→ACTIVE
+U-SALES-E       Project    ₹2.50L   DeptApproval(U-SALES-HEAD)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-SALES-E       Project    ₹7.50L   DeptApproval(U-SALES-HEAD)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-SALES-E       Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SALES-E       Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SALES-E       Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SALES-BR      Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SALES-BR      Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SALES-BR      Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-SALES-BR      Project    ₹0.50L   DeptApproval(U-SALES-HEAD)→FinanceHead(U-FH)→ACTIVE
+U-SALES-BR      Project    ₹2.50L   DeptApproval(U-SALES-HEAD)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-SALES-BR      Project    ₹7.50L   DeptApproval(U-SALES-HEAD)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-SALES-BR      Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SALES-BR      Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-SALES-BR      Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-BB-HEAD       Monthly    ₹0.50L   FinanceHead(U-FH)→ACTIVE
+U-BB-HEAD       Monthly    ₹2.50L   VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-BB-HEAD       Monthly    ₹7.50L   VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-BB-HEAD       Project    ₹0.50L   FinanceHead(U-FH)→ACTIVE
+U-BB-HEAD       Project    ₹2.50L   VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-BB-HEAD       Project    ₹7.50L   VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-BB-HEAD       Extension  ₹0.50L   FinanceHead(U-FH)→ACTIVE
+U-BB-HEAD       Extension  ₹2.50L   VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-BB-HEAD       Extension  ₹7.50L   BLOCKED — submit(): extension exceeds combined 80% cap
+U-BB-MID        Monthly    ₹0.50L   DeptApproval(U-BB-HEAD)→FinanceHead(U-FH)→ACTIVE
+U-BB-MID        Monthly    ₹2.50L   DeptApproval(U-BB-HEAD)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-BB-MID        Monthly    ₹7.50L   DeptApproval(U-BB-HEAD)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-BB-MID        Project    ₹0.50L   DeptApproval(U-BB-HEAD)→FinanceHead(U-FH)→ACTIVE
+U-BB-MID        Project    ₹2.50L   DeptApproval(U-BB-HEAD)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-BB-MID        Project    ₹7.50L   DeptApproval(U-BB-HEAD)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-BB-MID        Extension  ₹0.50L   DeptApproval(U-BB-HEAD)→FinanceHead(U-FH)→ACTIVE
+U-BB-MID        Extension  ₹2.50L   DeptApproval(U-BB-HEAD)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-BB-MID        Extension  ₹7.50L   BLOCKED — submit(): extension exceeds combined 80% cap
+U-BB-E          Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-BB-E          Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-BB-E          Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-BB-E          Project    ₹0.50L   DeptApproval(U-BB-HEAD)→FinanceHead(U-FH)→ACTIVE
+U-BB-E          Project    ₹2.50L   DeptApproval(U-BB-HEAD)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-BB-E          Project    ₹7.50L   DeptApproval(U-BB-HEAD)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-BB-E          Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-BB-E          Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-BB-E          Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-BB-PM         Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-BB-PM         Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-BB-PM         Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-BB-PM         Project    ₹0.50L   BoxBuildMid(U-BB-MID)→DeptApproval(U-BB-HEAD)→FinanceHead(U-FH)→ACTIVE
+U-BB-PM         Project    ₹2.50L   BoxBuildMid(U-BB-MID)→DeptApproval(U-BB-HEAD)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-BB-PM         Project    ₹7.50L   BoxBuildMid(U-BB-MID)→DeptApproval(U-BB-HEAD)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-BB-PM         Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-BB-PM         Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-BB-PM         Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-PROD-HEAD     Monthly    ₹0.50L   DeptApproval(U-MULTI)→FinanceHead(U-FH)→ACTIVE
+U-PROD-HEAD     Monthly    ₹2.50L   DeptApproval(U-MULTI)→VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-PROD-HEAD     Monthly    ₹7.50L   DeptApproval(U-MULTI)→VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-PROD-HEAD     Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-PROD-HEAD     Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-PROD-HEAD     Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-PROD-HEAD     Extension  ₹0.50L   BLOCKED — submit(): cannot extend a ODM project from Product (own-department projects only)
+U-PROD-HEAD     Extension  ₹2.50L   BLOCKED — submit(): cannot extend a ODM project from Product (own-department projects only)
+U-PROD-HEAD     Extension  ₹7.50L   BLOCKED — submit(): cannot extend a ODM project from Product (own-department projects only)
+U-PROD-E        Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-PROD-E        Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-PROD-E        Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-PROD-E        Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-PROD-E        Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-PROD-E        Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-PROD-E        Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-PROD-E        Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-PROD-E        Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-MULTI         Monthly    ₹0.50L   FinanceHead(U-FH)→ACTIVE
+U-MULTI         Monthly    ₹2.50L   VP(U-VP)→FinanceHead(U-FH)→ACTIVE
+U-MULTI         Monthly    ₹7.50L   VP(U-VP)→CEO(U-CEO)→FinanceHead(U-FH)→ACTIVE
+U-MULTI         Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-MULTI         Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-MULTI         Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-MULTI         Extension  ₹0.50L   BLOCKED — submit(): cannot extend a ODM project from Marketing (own-department projects only)
+U-MULTI         Extension  ₹2.50L   BLOCKED — submit(): cannot extend a ODM project from Marketing (own-department projects only)
+U-MULTI         Extension  ₹7.50L   BLOCKED — submit(): cannot extend a ODM project from Marketing (own-department projects only)
+U-MKT-E         Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-MKT-E         Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-MKT-E         Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-MKT-E         Project    ₹0.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-MKT-E         Project    ₹2.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-MKT-E         Project    ₹7.50L   BLOCKED — submit(): department/role cannot raise Project budgets
+U-MKT-E         Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-MKT-E         Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-MKT-E         Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-OTH-E         Monthly    ₹0.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-OTH-E         Monthly    ₹2.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-OTH-E         Monthly    ₹7.50L   BLOCKED — submit(): only Department Heads can raise Monthly Budgets
+U-OTH-E         Project    ₹0.50L   BLOCKED — submit(): no approver configured for this department
+U-OTH-E         Project    ₹2.50L   BLOCKED — submit(): no approver configured for this department
+U-OTH-E         Project    ₹7.50L   BLOCKED — submit(): no approver configured for this department
+U-OTH-E         Extension  ₹0.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-OTH-E         Extension  ₹2.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-OTH-E         Extension  ₹7.50L   BLOCKED — submit(): only Department Heads can raise Extensions
+U-RO            Monthly    ₹0.50L   BLOCKED — submit(): read-only account cannot raise requests
+U-RO            Monthly    ₹2.50L   BLOCKED — submit(): read-only account cannot raise requests
+U-RO            Monthly    ₹7.50L   BLOCKED — submit(): read-only account cannot raise requests
+U-RO            Project    ₹0.50L   BLOCKED — submit(): read-only account cannot raise requests
+U-RO            Project    ₹2.50L   BLOCKED — submit(): read-only account cannot raise requests
+U-RO            Project    ₹7.50L   BLOCKED — submit(): read-only account cannot raise requests
+U-RO            Extension  ₹0.50L   BLOCKED — submit(): read-only account cannot raise requests
+U-RO            Extension  ₹2.50L   BLOCKED — submit(): read-only account cannot raise requests
+U-RO            Extension  ₹7.50L   BLOCKED — submit(): read-only account cannot raise requests
+U-NODEPT        Monthly    ₹0.50L   BLOCKED — submit(): no department assigned
+U-NODEPT        Monthly    ₹2.50L   BLOCKED — submit(): no department assigned
+U-NODEPT        Monthly    ₹7.50L   BLOCKED — submit(): no department assigned
+U-NODEPT        Project    ₹0.50L   BLOCKED — submit(): no department assigned
+U-NODEPT        Project    ₹2.50L   BLOCKED — submit(): no department assigned
+U-NODEPT        Project    ₹7.50L   BLOCKED — submit(): no department assigned
+U-NODEPT        Extension  ₹0.50L   BLOCKED — submit(): no department assigned
+U-NODEPT        Extension  ₹2.50L   BLOCKED — submit(): no department assigned
+U-NODEPT        Extension  ₹7.50L   BLOCKED — submit(): no department assigned
+--------------------------------------------------------------------------------------------------------------
+matrix: 64 raised (64 reached Active, 0 stuck), 179 blocked by form gates
+
+
+### FINDINGS SUMMARY ###
+
+[HIGH]
+  BLIND_APPROVER  (first seen: U-PROD-HEAD/Monthly/₹0.50L)
+    U-MULTI (DeptApprover, scope=—) CAN ACT on a Product Monthly budget at DeptApproval but canUserSeeRequest()=false — the request appears in their action inbox (Dashboard builds it from canUserActOnRequest alone) while every visibility-filtered view hides it.
+
+[MEDIUM]
+  SM_OVERRIDE_SKIPS_ALL  (first seen: SM-override)
+    A SuperManager approval at ANY early stage takes a Budget straight to Active — a 2.5L (even 50L) budget never passes VP/CEO/FinanceHead. By design ("special access"), but it is a single-person full bypass of every financial control, with no second SuperManager countersign (PO SuperManagerApproval requires their stage; budgets do not).
+
+[LOW]
+  TAB_LOCKED_APPROVER  (first seen: U-PROD-HEAD/Monthly/₹0.50L)
+    U-MULTI is a routed approver for Product but can only act after switching their dashboard tab to Product (canUserActOnRequest is false on their primary tab).
+
+[PASS]
+  DOUBLE_APPROVE_BLOCKED  (first seen: D3)
+    An approver who already approved at DeptApproval cannot approve again (hasApproved check).
+  RD_CAP_OK  (first seen: RD/180k)
+    R&D monthly cap correctly blocks a request exceeding the remaining allocation (client-side).
+  READONLY_OK  (first seen: D4)
+    Read-only employees can neither raise nor act on budget requests (client-side).
+  REJECT_TERMINAL_OK  (first seen: D2)
+    Rejected requests are terminal — nobody can act on them afterwards.
+
+Total: 3 issues, 4 passing checks.

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { PiggyBank, Briefcase, Target, TrendingUp, Coins, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { EXPENSE_TYPES, NON_PROJECT_DEPTS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
-import { isHODLevel, isReadOnly } from "../lib/access";
-import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
+import { isHODLevel, isReadOnly, effectiveDepts } from "../lib/access";
+import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel, computeNextStage } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
 import { getRDAllocation } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
@@ -68,7 +68,11 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
   const canRaiseExtension = isHODLevel(user);
   const canRaiseRD = user.dept === "ODM" && (user.role === "Employee" || isHODLevel(user));
 
-  const eligibleApprovers = getEligibleDeptApprovers(user, { requiresProject: true, category: "Project" }, true);
+  // Monthly budgets are not project work; Project and Extension budgets are. This must
+  // match the `isProject` stamped on the record below, or scoped heads (ODM-PROJECT)
+  // end up required approvers on requests their visibility rules hide from them.
+  const isProjectBudget = budgetType !== "Monthly";
+  const eligibleApprovers = getEligibleDeptApprovers(user, { requiresProject: true, category: "Project" }, isProjectBudget);
   const needsMid = needsBoxBuildMidApproval(user);
 
   async function handleFileUpload(e) {
@@ -86,6 +90,15 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
     setErr("");
     if (isReadOnly(user)) return setErr("Your account is read-only and cannot raise requests.");
     if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
+    // Role gates must be enforced here, not just on the type buttons: for non-project
+    // departments the form OPENS with budgetType="Monthly", so a disabled button alone
+    // does not stop an ordinary employee from submitting a Monthly budget.
+    if (budgetType === "Monthly" && !canRaiseMonthly) return setErr("Only Department Heads can raise Monthly Budgets.");
+    if (budgetType === "Extension" && !canRaiseExtension) return setErr("Only Department Heads can raise Extensions.");
+    if (budgetType === "Project" && !canRaiseProject) return setErr("Your department cannot raise Project budgets.");
+    // Without a configured approver the request would be born stuck at DeptApproval
+    // with nobody able to act on it (e.g. "Other" / Executive-employee departments).
+    if (eligibleApprovers.length === 0) return setErr("No approver is configured for your department. Ask an admin to set up an approval chain before raising requests.");
     if (!form.amount || amountINR <= 0) return setErr("Valid amount required");
     if (form.currency !== "INR" && (!form.fxRate || parseFloat(form.fxRate) <= 0)) return setErr("Valid FX rate required");
 
@@ -115,7 +128,12 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
       if (!form.extensionFor) return setErr("Select project to extend");
       if (!form.reason.trim()) return setErr("Reason required");
       const existing = budgets.find(b => b.projectId === form.extensionFor && b.type === "Project");
-      if (existing && existing.projectType === "Client") {
+      if (!existing) return setErr("Project to extend not found.");
+      // An extension is approved by the REQUESTER's department chain, so the parent
+      // project must belong to one of the requester's departments — otherwise any head
+      // could inflate another department's project budget through their own approvers.
+      if (!effectiveDepts(user).includes(existing.dept)) return setErr("You can only extend projects belonging to your own department.");
+      if (existing.projectType === "Client") {
         const exts = budgets.filter(b => b.type === "Extension" && b.extensionFor === form.extensionFor && (b.status === "Active" || b.currentStage === "Active"));
         const extTotal = exts.reduce((s, e) => s + e.amountINR, 0);
         const max = existing.clientOrderValue * MAX_BUDGET_RATIO;
@@ -127,11 +145,24 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
 
     setSubmitting(true);
     const now = new Date().toISOString();
-    const selectedApproverIds = eligibleApprovers.map(a => a.id);
-    const initialStage = needsMid && user.dept === "Box Build" && user.role === "Employee" ? "BoxBuildMid" : "DeptApproval";
+    // Segregation of duties: a request must never be routed to its own raiser. Drop the
+    // raiser from the eligible approver set (e.g. a department head raising their own
+    // budget would otherwise be able to approve it).
+    const selectedApproverIds = eligibleApprovers.map(a => a.id).filter(id => id !== user.id);
+    const needsMidStage = needsMid && user.dept === "Box Build" && user.role === "Employee";
+    // If removing the raiser leaves no in-department approver (a sole department head
+    // raising their own request), skip the dept stage and escalate straight to the next
+    // authority in the chain (VP / CEO / Finance Head, by amount) — so the request can
+    // still be approved by someone independent rather than being stuck or self-approved.
+    const initialStage = needsMidStage
+      ? "BoxBuildMid"
+      : (selectedApproverIds.length === 0
+          ? computeNextStage({ kind: "Budget", amountINR, type: budgetType }, "DeptApproval", null)
+          : "DeptApproval");
 
     const newBudget = {
       id: "BUD-" + Date.now(), kind: "Budget", type: budgetType, projectType: budgetType === "Project" ? projectType : undefined,
+      isProject: isProjectBudget,
       createdDate: now, requesterId: user.id, requesterName: user.name, dept: user.dept,
       projectId: form.projectId, projectName: form.projectName, client: form.client,
       startDate: form.startDate, endDate: form.endDate,
@@ -289,7 +320,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Extend which Project? *</label>
               <select value={form.extensionFor} onChange={(e) => setForm({ ...form, extensionFor: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                 <option value="">Select</option>
-                {budgets.filter(b => b.type === "Project" && (b.status === "Active" || b.currentStage === "Active")).map(b => <option key={b.projectId} value={b.projectId}>[{b.projectType === "RD" ? "R&D" : "Client"}] {b.projectId} — {b.projectName}</option>)}
+                {budgets.filter(b => b.type === "Project" && (b.status === "Active" || b.currentStage === "Active") && effectiveDepts(user).includes(b.dept)).map(b => <option key={b.projectId} value={b.projectId}>[{b.projectType === "RD" ? "R&D" : "Client"}] {b.projectId} — {b.projectName}</option>)}
               </select>
             </div>
             <CurrencyInput value={form.amount} currency={form.currency} fxRate={form.fxRate} onChange={(v) => setForm({ ...form, amount: v.amount, currency: v.currency, fxRate: v.fxRate })} label="Extension Amount" required />
@@ -300,7 +331,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
         {(budgetType !== "Project" || projectType) && (
           <>
             <AttachmentInput form={form} setForm={setForm} handleFileUpload={handleFileUpload} required label="Supporting Document" />
-            {amountINR > 0 && <FlowPreview steps={[user.name, "Dept Head", amountINR >= VP_THRESHOLD && amountINR < CEO_THRESHOLD ? "VP" : null, amountINR >= CEO_THRESHOLD ? "VP + CEO" : null, "Finance Head", "Active"].filter(Boolean)} />}
+            {amountINR > 0 && <FlowPreview steps={[user.name, "Dept Head", amountINR >= VP_THRESHOLD ? "VP" : null, amountINR >= CEO_THRESHOLD ? "CEO" : null, "Finance Head", "Active"].filter(Boolean)} />}
             {err && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">{err}</div>}
             <div className="flex gap-2">
               <button onClick={submit} disabled={submitting} className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white font-semibold px-5 py-2.5 rounded-lg text-sm">{submitting ? "Submitting…" : `Submit ${budgetType} Budget`}</button>

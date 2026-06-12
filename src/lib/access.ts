@@ -19,7 +19,7 @@ function headSeesRequest(user, request) {
   switch (user.scope) {
     case "ODM-ALL": return request.dept === "ODM";
     case "ODM-PROJECT": return request.dept === "ODM" && request.isProject === true;
-    case "ODM-SALES": return request.dept === "ODM" || (request.dept === "Sales" && request.scope === "ODM-SALES");
+    case "ODM-SALES": return request.dept === "ODM" || request.dept === "Sales";
     case "HR": return request.dept === "HR";
     case "BOXBUILD": return request.dept === "Box Build";
     // No special scope (incl. the Box Build mid-approver): own department only. With
@@ -72,6 +72,12 @@ export function canUserActOnRequest(user, request) {
   // R&D cap allocations and allocation requests are config, not workflow items.
   if (request.type === "RDCap" || request.type === "RDCapRequest") return false;
   if (["Paid", "Rejected", "Cancelled", "Active", "Approved", "Closed"].includes(request.status)) return false;
+  // Segregation of duties: the requester can NEVER approve or act on their own
+  // request — at any stage or in any role. This covers a department head who is also
+  // their own routed approver, a Finance Head who raised a budget (who would otherwise
+  // approve it at both the Dept and Finance stages), and a SuperManager acting on
+  // their own request via the override path below. Independent review is mandatory.
+  if (request.requesterId === user.id) return false;
   // PO at SuperManagerApproval: only SuperManagers (actual approval stage)
   if (request.kind === "PO" && request.currentStage === "SuperManagerApproval") {
     return user.role === "SuperManager";

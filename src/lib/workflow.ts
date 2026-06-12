@@ -38,8 +38,15 @@ export function getEligibleDeptApprovers(requester, selectedType, isProject) {
   if ((dept === "ODM" || dept === "Sales") && requester.scope === "ODM-SALES") {
     return deptApprovers().filter(u => u.scope === "ODM-SALES");
   }
-  // ODM / Sales: the all-ODM head, plus the project head when this is a project.
-  if (dept === "ODM" || dept === "Sales") {
+  // Sales: routes to the Sales head, who carries the ODM-SALES scope. Sales work is
+  // NOT approved by the ODM-ALL / ODM-PROJECT heads — only the ODM bridge runs the
+  // other direction (the Sales head also covers ODM). This matches getDeptHeadsForDept,
+  // which already notifies the ODM-SALES head for Sales activity.
+  if (dept === "Sales") {
+    return deptApprovers().filter(u => u.scope === "ODM-SALES");
+  }
+  // ODM: the all-ODM head, plus the project head when this is a project.
+  if (dept === "ODM") {
     return deptApprovers().filter(u => u.scope === "ODM-ALL" || (isProject && u.scope === "ODM-PROJECT"));
   }
   // Every other department: the DeptApprover(s) whose mandate covers it.
@@ -69,6 +76,13 @@ export function computeNextStage(request, currentStage, approver) {
     }
     if (request.kind === "PO") {
       if (request.amountINR >= CEO_THRESHOLD) return "VP"; // VP first, then SuperManager
+      if (request.amountINR >= VP_THRESHOLD) return "VP";
+      return "FinanceHead";
+    }
+    // Budgets at or above the CEO threshold are reviewed by BOTH the VP and the CEO
+    // (VP first — the VP stage below escalates to CEO for those amounts), matching the
+    // form's FlowPreview. Payments keep their existing straight-to-CEO routing.
+    if (request.kind === "Budget") {
       if (request.amountINR >= VP_THRESHOLD) return "VP";
       return "FinanceHead";
     }
