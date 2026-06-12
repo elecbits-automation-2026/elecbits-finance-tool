@@ -10,16 +10,19 @@ import { effectiveDepts } from "./access";
 // no special scope simply covers their own department.
 const deptApprovers = () => getRoster().filter(u => u.role === "DeptApprover");
 
-function approverScopeCovers(approver, dept, isProject) {
+// Does this approver's scope cover `dept`? Only reached from the DEFAULT branch
+// of getEligibleDeptApprovers — i.e. for departments OTHER than ODM and Sales,
+// which are routed by their own dedicated branches above. So ODM/Sales scopes
+// are intentionally absent here: an ODM-scoped head never approves an HR /
+// Product / etc. budget, which is exactly what the final `!approver.scope`
+// guard yields (an unrecognised or ODM/Sales scope covers nothing here).
+function approverScopeCovers(approver, dept) {
   switch (approver.scope) {
-    case "ODM-ALL": return dept === "ODM";
-    case "ODM-PROJECT": return dept === "ODM" && isProject === true;
-    case "ODM-SALES": return dept === "ODM" || dept === "Sales";
     case "HR": return dept === "HR";
     case "BOXBUILD": return dept === "Box Build";
     // No special scope: the approver covers any department they belong to (primary
     // or an admin-granted extra), so a multi-department head is routed work in each.
-    default: return effectiveDepts(approver).includes(dept);
+    default: return !approver.scope && effectiveDepts(approver).includes(dept);
   }
 }
 
@@ -50,7 +53,7 @@ export function getEligibleDeptApprovers(requester, selectedType, isProject) {
     return deptApprovers().filter(u => u.scope === "ODM-ALL" || (isProject && u.scope === "ODM-PROJECT"));
   }
   // Every other department: the DeptApprover(s) whose mandate covers it.
-  return deptApprovers().filter(u => approverScopeCovers(u, dept, isProject));
+  return deptApprovers().filter(u => approverScopeCovers(u, dept));
 }
 
 export function needsBoxBuildMidApproval(requester) {
