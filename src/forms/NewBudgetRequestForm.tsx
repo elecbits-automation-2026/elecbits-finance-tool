@@ -331,7 +331,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
         {(budgetType !== "Project" || projectType) && (
           <>
             <AttachmentInput form={form} setForm={setForm} handleFileUpload={handleFileUpload} required label="Supporting Document" />
-            {amountINR > 0 && <FlowPreview steps={[user.name, "Dept Head", amountINR >= VP_THRESHOLD ? "VP" : null, amountINR >= CEO_THRESHOLD ? "CEO" : null, "Finance Head", "Active"].filter(Boolean)} />}
+            {amountINR > 0 && <FlowPreview steps={[user.name, "Dept Head", "Finance Head", amountINR >= VP_THRESHOLD ? "VP" : null, amountINR >= CEO_THRESHOLD ? "CEO" : null, "Active"].filter(Boolean)} />}
             {err && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">{err}</div>}
             <div className="flex gap-2">
               <button onClick={submit} disabled={submitting} className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white font-semibold px-5 py-2.5 rounded-lg text-sm">{submitting ? "Submitting…" : `Submit ${budgetType} Budget`}</button>

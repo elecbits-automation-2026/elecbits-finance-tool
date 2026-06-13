@@ -271,11 +271,12 @@ function runChain(req0: any, scen: string, verbose = false): { path: string[]; f
   return { path, final: req, stuck: false };
 }
 
-// expected stage sequence per the rules: <1L Dept→FH, 1L..<5L Dept→VP→FH,
-// >=5L Dept→VP→CEO→FH (both VP and CEO review, matching the FlowPreview).
+// expected stage sequence per the rules: Finance reviews first, then the
+// executive chain escalates by amount. <1L Dept→FH, 1L..<5L Dept→FH→VP,
+// >=5L Dept→FH→VP→CEO (both VP and CEO review, matching the FlowPreview).
 function expectedStages(amountINR: number) {
-  if (amountINR >= CEO_THRESHOLD) return ["DeptApproval", "VP", "CEO", "FinanceHead"];
-  if (amountINR >= VP_THRESHOLD) return ["DeptApproval", "VP", "FinanceHead"];
+  if (amountINR >= CEO_THRESHOLD) return ["DeptApproval", "FinanceHead", "VP", "CEO"];
+  if (amountINR >= VP_THRESHOLD) return ["DeptApproval", "FinanceHead", "VP"];
   return ["DeptApproval", "FinanceHead"];
 }
 
