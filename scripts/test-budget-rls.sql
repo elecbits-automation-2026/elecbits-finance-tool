@@ -269,7 +269,7 @@ rollback;
 -- B. LEGITIMATE FLOWS — the app's real behavior must still work.
 -- ============================================================================
 
--- B1: full ≥5L chain: dept consensus -> VP -> CEO -> FinanceHead -> Active.
+-- B1: full ≥5L chain: dept consensus -> FinanceHead -> VP -> CEO -> Active.
 begin;
 select test.as_user('U-ODM-E');
 select test.expect_ok('B1a: raise 7.5L client project',
@@ -279,19 +279,19 @@ select test.as_user('U-ODM-ALL');
 select test.expect_ok('B1b: first dept approval (1/2)',
   test.act_sql('BUD-B1', 'U-ODM-ALL', 'DeptApproval', 'Pending Dept Head (1/2)', 'Approved (Dept)'));
 select test.expect_fail('B1c: same approver cannot approve twice (DOUBLE_APPROVE)',
-  test.act_sql('BUD-B1', 'U-ODM-ALL', 'VP', 'Pending VP', 'Approved (Dept)'));
+  test.act_sql('BUD-B1', 'U-ODM-ALL', 'FinanceHead', 'Pending Finance Head', 'Approved (Dept)'));
 select test.as_user('U-ODM-PROJ');
-select test.expect_ok('B1d: consensus completes -> VP',
-  test.act_sql('BUD-B1', 'U-ODM-PROJ', 'VP', 'Pending VP', 'Approved (Dept)'));
+select test.expect_ok('B1d: consensus completes -> FinanceHead',
+  test.act_sql('BUD-B1', 'U-ODM-PROJ', 'FinanceHead', 'Pending Finance Head', 'Approved (Dept)'));
+select test.as_user('U-FH');
+select test.expect_ok('B1e: FinanceHead -> VP (>=1L escalates)',
+  test.act_sql('BUD-B1', 'U-FH', 'VP', 'Pending VP', 'Approved by Finance Head'));
 select test.as_user('U-VP');
-select test.expect_ok('B1e: VP -> CEO (>=5L goes through BOTH)',
+select test.expect_ok('B1f: VP -> CEO (>=5L goes through BOTH)',
   test.act_sql('BUD-B1', 'U-VP', 'CEO', 'Pending CEO', 'Approved by VP'));
 select test.as_user('U-CEO');
-select test.expect_ok('B1f: CEO -> FinanceHead',
-  test.act_sql('BUD-B1', 'U-CEO', 'FinanceHead', 'Pending Finance Head', 'Approved by CEO'));
-select test.as_user('U-FH');
-select test.expect_ok('B1g: FinanceHead -> Active',
-  test.act_sql('BUD-B1', 'U-FH', 'Active', 'Active', 'Approved by Finance Head'));
+select test.expect_ok('B1g: CEO -> Active',
+  test.act_sql('BUD-B1', 'U-CEO', 'Active', 'Active', 'Approved by CEO'));
 rollback;
 
 -- B2: SuperManager override; rejection; requester cancel; no-op bulk save.

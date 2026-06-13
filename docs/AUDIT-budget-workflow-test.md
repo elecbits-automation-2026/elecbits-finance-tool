@@ -41,7 +41,7 @@ guard now exists).
 | Extension dropdown + `submit()` restricted to the requester's own department's projects | `NewBudgetRequestForm.tsx` |
 | Monthly / Extension / Project role gates enforced in `submit()` (not just disabled buttons) | `NewBudgetRequestForm.tsx` |
 | Submission blocked when no approver is configured ("Other" / Executive-employee) | `NewBudgetRequestForm.tsx` |
-| ≥₹5L budgets now route Dept → **VP → CEO** → FinanceHead, matching the FlowPreview (which now shows VP and CEO as separate steps); payments/POs untouched | `workflow.ts` |
+| Finance reviews first: all budgets now route Dept → **FinanceHead → VP → CEO** (Finance immediately after the dept head, then the executive chain escalates by amount), matching the FlowPreview; the same Finance-first reorder applies to Payments and POs | `workflow.ts` |
 | Budgets stamp `isProject`, and approvers are computed with the same flag, so the ODM-PROJECT head can SEE everything they must approve | `NewBudgetRequestForm.tsx` |
 
 **Remaining (accepted/known):**
@@ -112,10 +112,10 @@ correct at every tier:
 | Tier | Amount | Path observed | Correct? |
 |------|--------|---------------|----------|
 | < ₹1L | ₹0.5L | Dept → FinanceHead → Active | ✅ |
-| = ₹1L | ₹1L | Dept → VP → FinanceHead → Active | ✅ |
-| ₹1L–5L | ₹2.5L | Dept → VP → FinanceHead → Active | ✅ |
-| = ₹5L | ₹5L | Dept → **CEO** → FinanceHead → Active | ⚠️ see §3.6 |
-| > ₹5L | ₹7.5L | Dept → **CEO** → FinanceHead → Active | ⚠️ see §3.6 |
+| = ₹1L | ₹1L | Dept → FinanceHead → VP → Active | ✅ |
+| ₹1L–5L | ₹2.5L | Dept → FinanceHead → VP → Active | ✅ |
+| = ₹5L | ₹5L | Dept → FinanceHead → VP → CEO → Active | ✅ |
+| > ₹5L | ₹7.5L | Dept → FinanceHead → VP → CEO → Active | ✅ |
 
 The threshold arithmetic itself is right (₹1L hits the VP tier, ₹5L hits the CEO
 tier — the `>=` boundaries are correct). The Box Build pre-stage works: a Box Build
@@ -272,6 +272,11 @@ the **VP never reviews it**. But the form's `FlowPreview` advertises
 wrong or the routing is — the two disagree for every budget at or above ₹5L. (POs, by
 contrast, *do* route VP-then-SuperManager for ≥₹5L — so budgets are inconsistent with
 POs too.) Decide the intended policy and align both.
+
+**Resolved (Finance-first reorder):** budgets now route Dept → FinanceHead → VP → CEO,
+so a ≥₹5L budget passes through **both** the VP and the CEO and the form preview agrees.
+Payments retain their straight-to-CEO routing at ≥₹5L (no VP) by design — Finance simply
+moved to the front of all three chains.
 
 ---
 
