@@ -370,4 +370,21 @@ select test.expect_ok('B4b: multi-dept head (primary Marketing) approves Product
   test.act_sql('BUD-B4', 'U-MULTI', 'FinanceHead', 'Pending Finance Head', 'Approved (Dept)'));
 rollback;
 
+-- B5: SuperManager override at the FinanceHead stage (Finance-first regression).
+-- FinanceHead is now a MID-chain stage, so a SuperManager approving there must still
+-- fast-track straight to Active — the trigger expects exp_stage='Active' for ANY
+-- SuperManager approval, at any stage. Advancing to VP (the next normal stage) must be
+-- rejected. Guards the ActionButtons.isEarlyStage fix; without it the client would send
+-- the VP transition that B5b proves the server rejects.
+begin;
+select test.as_user('U-HR-HEAD');
+select test.expect_ok('B5a: sole HR head raises own 2.5L Monthly -> starts at FinanceHead',
+  test.ins_sql(test.mk_budget('BUD-B5', 'Monthly', 'HR', 'U-HR-HEAD', 250000, 'FinanceHead', array[]::text[])));
+select test.as_user('U-SM1');
+select test.expect_fail('B5b: SuperManager at FinanceHead cannot advance to VP (must fast-track to Active)',
+  test.act_sql('BUD-B5', 'U-SM1', 'VP', 'Pending VP', 'Approved by Stuti Sm'));
+select test.expect_ok('B5c: SuperManager override at FinanceHead -> Active',
+  test.act_sql('BUD-B5', 'U-SM1', 'Active', 'Active', 'Approved by Stuti Sm'));
+rollback;
+
 select 'ALL BUDGET RLS TESTS PASSED' as result;
