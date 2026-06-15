@@ -72,42 +72,48 @@ export function computeNextStage(request, currentStage, approver) {
     }
   }
   if (currentStage === "BoxBuildMid") return "DeptApproval";
-  if (currentStage === "DeptApproval") {
-    // PO Edit/Cancel skip VP/CEO
+  // Finance reviews FIRST, immediately after the department head, then the request
+  // escalates up the executive chain (VP → CEO / SuperManager) by amount. This holds
+  // for all three flows — Budget, Payment and PO — so the Finance Head is always the
+  // first sign-off after the department and never the last.
+  if (currentStage === "DeptApproval") return "FinanceHead";
+  if (currentStage === "FinanceHead") {
+    // PO Edit/Cancel are not re-escalated up the chain — straight to processing.
     if (request.kind === "PO" && (request.type === "POEdit" || request.type === "POCancel")) {
-      return "FinanceHead";
-    }
-    if (request.kind === "PO") {
-      if (request.amountINR >= CEO_THRESHOLD) return "VP"; // VP first, then SuperManager
-      if (request.amountINR >= VP_THRESHOLD) return "VP";
-      return "FinanceHead";
+      return "Accountant";
     }
     // Budgets at or above the CEO threshold are reviewed by BOTH the VP and the CEO
     // (VP first — the VP stage below escalates to CEO for those amounts), matching the
-    // form's FlowPreview. Payments keep their existing straight-to-CEO routing.
+    // form's FlowPreview.
     if (request.kind === "Budget") {
       if (request.amountINR >= VP_THRESHOLD) return "VP";
-      return "FinanceHead";
+      return "Active";
     }
+    if (request.kind === "PO") {
+      if (request.amountINR >= VP_THRESHOLD) return "VP"; // VP first, then SuperManager for ≥5L
+      return "Accountant";
+    }
+    // Payments keep their existing straight-to-CEO routing (no VP) at ≥5L.
     if (request.amountINR >= CEO_THRESHOLD) return "CEO";
     if (request.amountINR >= VP_THRESHOLD) return "VP";
-    return "FinanceHead";
-  }
-  if (currentStage === "VP") {
-    if (request.kind === "PO") {
-      if (request.amountINR >= CEO_THRESHOLD) return "SuperManagerApproval";
-      return "FinanceHead";
-    }
-    if (request.amountINR >= CEO_THRESHOLD) return "CEO";
-    return "FinanceHead";
-  }
-  if (currentStage === "CEO") return "FinanceHead";
-  if (currentStage === "SuperManagerApproval") return "FinanceHead";
-  if (currentStage === "FinanceHead") {
-    if (request.kind === "Budget") return "Active";
-    if (request.kind === "PO") return "Accountant";
     return "Accountant";
   }
+  if (currentStage === "VP") {
+    if (request.kind === "Budget") {
+      if (request.amountINR >= CEO_THRESHOLD) return "CEO";
+      return "Active";
+    }
+    if (request.kind === "PO") {
+      if (request.amountINR >= CEO_THRESHOLD) return "SuperManagerApproval";
+      return "Accountant";
+    }
+    return "Accountant"; // Payment: VP is only reached in the 1L–5L tier
+  }
+  if (currentStage === "CEO") {
+    if (request.kind === "Budget") return "Active";
+    return "Accountant"; // Payment
+  }
+  if (currentStage === "SuperManagerApproval") return "Accountant";
   if (currentStage === "Accountant") {
     if (request.kind === "PO") return "Approved";
     return "Paid";

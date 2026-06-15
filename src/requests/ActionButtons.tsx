@@ -18,7 +18,11 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
 
   const isSuperManager = user.role === "SuperManager";
   const isPOAtSuperStage = isPO && request.currentStage === "SuperManagerApproval";
-  const isEarlyStage = !["FinanceHead", "Accountant", "Processing"].includes(request.currentStage);
+  // FinanceHead is a MID-chain stage now (Finance reviews first, before VP/CEO), so the
+  // SuperManager fast-track below must fire there too — the budgets_guard trigger expects
+  // ANY SuperManager approval to jump straight to Active. Only the terminal processing
+  // stages are excluded.
+  const isEarlyStage = !["Accountant", "Processing"].includes(request.currentStage);
 
   async function handlePaymentProofUpload(e) {
     const file = e.target.files[0];

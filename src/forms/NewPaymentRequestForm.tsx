@@ -151,9 +151,9 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
   else if (isMultiApprover && form.selectedApproverIds.length > 0) flowSteps.push(form.selectedApproverIds.map(id => getRoster().find(u => u.id === id)?.name).filter(Boolean).join(" + "));
   else if (eligibleApprovers.length === 1) flowSteps.push(eligibleApprovers[0].name);
   else if (isMultiApprover) flowSteps.push("<select approver>");
-  if (amountINR >= VP_THRESHOLD && amountINR < CEO_THRESHOLD) flowSteps.push("Mahendra (VP)");
-  if (amountINR >= CEO_THRESHOLD) flowSteps.push("VP + CEO");
   flowSteps.push("Ravi (Finance Head)");
+  if (amountINR >= VP_THRESHOLD && amountINR < CEO_THRESHOLD) flowSteps.push("Mahendra (VP)");
+  if (amountINR >= CEO_THRESHOLD) flowSteps.push("CEO");
   flowSteps.push("Divyanshu (Accountant)");
 
   return (

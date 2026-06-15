@@ -348,15 +348,16 @@ returns text language sql immutable as $$
 $$;
 
 -- Next stage for a budget on a NON-SuperManager approval. Mirrors the budget
--- branches of computeNextStage(): >=1L adds VP, >=5L adds VP then CEO.
+-- branches of computeNextStage(): Finance reviews FIRST (right after the dept
+-- head), then >=1L adds VP, >=5L adds VP then CEO.
 create or replace function public.budget_next_stage(amount numeric, stage text)
 returns text language sql immutable as $$
   select case stage
     when 'BoxBuildMid' then 'DeptApproval'
-    when 'DeptApproval' then case when amount >= 100000 then 'VP' else 'FinanceHead' end
-    when 'VP' then case when amount >= 500000 then 'CEO' else 'FinanceHead' end
-    when 'CEO' then 'FinanceHead'
-    when 'FinanceHead' then 'Active'
+    when 'DeptApproval' then 'FinanceHead'
+    when 'FinanceHead' then case when amount >= 100000 then 'VP' else 'Active' end
+    when 'VP' then case when amount >= 500000 then 'CEO' else 'Active' end
+    when 'CEO' then 'Active'
     else stage end;
 $$;
 

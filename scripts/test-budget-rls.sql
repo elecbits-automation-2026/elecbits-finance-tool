@@ -269,7 +269,7 @@ rollback;
 -- B. LEGITIMATE FLOWS — the app's real behavior must still work.
 -- ============================================================================
 
--- B1: full ≥5L chain: dept consensus -> VP -> CEO -> FinanceHead -> Active.
+-- B1: full ≥5L chain: dept consensus -> FinanceHead -> VP -> CEO -> Active.
 begin;
 select test.as_user('U-ODM-E');
 select test.expect_ok('B1a: raise 7.5L client project',
@@ -279,19 +279,19 @@ select test.as_user('U-ODM-ALL');
 select test.expect_ok('B1b: first dept approval (1/2)',
   test.act_sql('BUD-B1', 'U-ODM-ALL', 'DeptApproval', 'Pending Dept Head (1/2)', 'Approved (Dept)'));
 select test.expect_fail('B1c: same approver cannot approve twice (DOUBLE_APPROVE)',
-  test.act_sql('BUD-B1', 'U-ODM-ALL', 'VP', 'Pending VP', 'Approved (Dept)'));
+  test.act_sql('BUD-B1', 'U-ODM-ALL', 'FinanceHead', 'Pending Finance Head', 'Approved (Dept)'));
 select test.as_user('U-ODM-PROJ');
-select test.expect_ok('B1d: consensus completes -> VP',
-  test.act_sql('BUD-B1', 'U-ODM-PROJ', 'VP', 'Pending VP', 'Approved (Dept)'));
+select test.expect_ok('B1d: consensus completes -> FinanceHead',
+  test.act_sql('BUD-B1', 'U-ODM-PROJ', 'FinanceHead', 'Pending Finance Head', 'Approved (Dept)'));
+select test.as_user('U-FH');
+select test.expect_ok('B1e: FinanceHead -> VP (>=1L escalates)',
+  test.act_sql('BUD-B1', 'U-FH', 'VP', 'Pending VP', 'Approved by Finance Head'));
 select test.as_user('U-VP');
-select test.expect_ok('B1e: VP -> CEO (>=5L goes through BOTH)',
+select test.expect_ok('B1f: VP -> CEO (>=5L goes through BOTH)',
   test.act_sql('BUD-B1', 'U-VP', 'CEO', 'Pending CEO', 'Approved by VP'));
 select test.as_user('U-CEO');
-select test.expect_ok('B1f: CEO -> FinanceHead',
-  test.act_sql('BUD-B1', 'U-CEO', 'FinanceHead', 'Pending Finance Head', 'Approved by CEO'));
-select test.as_user('U-FH');
-select test.expect_ok('B1g: FinanceHead -> Active',
-  test.act_sql('BUD-B1', 'U-FH', 'Active', 'Active', 'Approved by Finance Head'));
+select test.expect_ok('B1g: CEO -> Active',
+  test.act_sql('BUD-B1', 'U-CEO', 'Active', 'Active', 'Approved by CEO'));
 rollback;
 
 -- B2: SuperManager override; rejection; requester cancel; no-op bulk save.
@@ -368,6 +368,23 @@ select test.expect_ok('B4a: Product head raises Monthly (consensus with U-MULTI)
 select test.as_user('U-MULTI');
 select test.expect_ok('B4b: multi-dept head (primary Marketing) approves Product budget',
   test.act_sql('BUD-B4', 'U-MULTI', 'FinanceHead', 'Pending Finance Head', 'Approved (Dept)'));
+rollback;
+
+-- B5: SuperManager override at the FinanceHead stage (Finance-first regression).
+-- FinanceHead is now a MID-chain stage, so a SuperManager approving there must still
+-- fast-track straight to Active — the trigger expects exp_stage='Active' for ANY
+-- SuperManager approval, at any stage. Advancing to VP (the next normal stage) must be
+-- rejected. Guards the ActionButtons.isEarlyStage fix; without it the client would send
+-- the VP transition that B5b proves the server rejects.
+begin;
+select test.as_user('U-HR-HEAD');
+select test.expect_ok('B5a: sole HR head raises own 2.5L Monthly -> starts at FinanceHead',
+  test.ins_sql(test.mk_budget('BUD-B5', 'Monthly', 'HR', 'U-HR-HEAD', 250000, 'FinanceHead', array[]::text[])));
+select test.as_user('U-SM1');
+select test.expect_fail('B5b: SuperManager at FinanceHead cannot advance to VP (must fast-track to Active)',
+  test.act_sql('BUD-B5', 'U-SM1', 'VP', 'Pending VP', 'Approved by Stuti Sm'));
+select test.expect_ok('B5c: SuperManager override at FinanceHead -> Active',
+  test.act_sql('BUD-B5', 'U-SM1', 'Active', 'Active', 'Approved by Stuti Sm'));
 rollback;
 
 select 'ALL BUDGET RLS TESTS PASSED' as result;

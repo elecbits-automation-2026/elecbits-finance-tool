@@ -190,11 +190,11 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
   const flowSteps = [user.name];
   if (needsMid) flowSteps.push("Arun (Delivery Head)");
   flowSteps.push(eligibleApprovers.map(a => a.name).filter(Boolean).join(" / ") || "Dept Head");
+  flowSteps.push("Finance Head");
   if (!isEdit) {
     if (grandTotalINR >= VP_THRESHOLD && grandTotalINR < CEO_THRESHOLD) flowSteps.push("VP");
     if (grandTotalINR >= CEO_THRESHOLD) flowSteps.push("VP + Stuti & Sarthak");
   }
-  flowSteps.push("Finance Head");
   flowSteps.push("Accountant (assigns PO #)");
 
   const currencySymbol = CURRENCIES.find(c => c.code === form.currency)?.symbol || "₹";
