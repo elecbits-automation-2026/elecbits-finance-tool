@@ -449,7 +449,12 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
               <div className="bg-emerald-50 border border-emerald-200 rounded p-1.5 text-xs"><span className="text-emerald-700">Grand Total in INR:</span> <strong className="text-emerald-900">₹{grandTotalINR.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></div>
             </div>
           )}
-          <div className={`overflow-x-auto ${form.hasPI ? "pointer-events-none select-none" : ""}`} aria-disabled={form.hasPI}>
+          {form.hasPI ? (
+            <div className="text-xs text-purple-700 italic bg-white/60 border border-dashed border-purple-300 rounded p-3 text-center">
+              Line items aren't used for this PO — the total is taken from the Proforma Invoice above.
+            </div>
+          ) : (
+          <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-slate-600 font-semibold border-b border-purple-200">
@@ -511,6 +516,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
               </tfoot>
             </table>
           </div>
+          )}
         </div>
 
         <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Scope Summary *</label><textarea value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} rows={2} placeholder="Brief overall scope (separate from line items)" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
