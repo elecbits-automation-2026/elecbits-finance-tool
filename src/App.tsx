@@ -13,6 +13,7 @@ export default function App() {
   const [requests, setRequests] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [pos, setPOs] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [poCounter, setPOCounter] = useState(2);
   const [notifications, setNotifications] = useState([]);
   const [toast, setToast] = useState(null);
@@ -72,6 +73,14 @@ export default function App() {
       setPOs([]);
     }
 
+    // Suppliers (master used by the PO form for the supplier dropdown)
+    try {
+      setSuppliers(await db.fetchSuppliers());
+    } catch (err) {
+      console.log("Suppliers load failed:", err?.message);
+      setSuppliers([]);
+    }
+
     // PO Counter
     try {
       const c = await db.fetchPOCounter();
@@ -108,6 +117,7 @@ export default function App() {
     }
   }
   async function savePOs(v) { setPOs(v); try { await db.savePOs(v); } catch (e) { console.error("savePOs failed:", e?.message); } }
+  async function saveSuppliers(v) { setSuppliers(v); try { await db.saveSuppliers(v); } catch (e) { console.error("saveSuppliers failed:", e?.message); } }
   async function savePOCounter(v) { setPOCounter(v); try { await db.savePOCounter(v); } catch (e) { console.error("savePOCounter failed:", e?.message); } }
   async function saveNotifications(v) { setNotifications(v); try { await db.saveNotifications(v); } catch (e) { console.error("saveNotifications failed:", e?.message); } }
   function showToast(message, type = "info") { setToast({ message, type, id: Date.now() }); setTimeout(() => setToast(null), 3000); }
@@ -135,7 +145,7 @@ export default function App() {
   );
   return (
     <>
-      <Dashboard user={currentUser} requests={requests} budgets={budgets} pos={pos} poCounter={poCounter} notifications={notifications} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} saveNotifications={saveNotifications} addNotifications={addNotifications} showToast={showToast} onLogout={handleLogout} />
+      <Dashboard user={currentUser} requests={requests} budgets={budgets} pos={pos} suppliers={suppliers} poCounter={poCounter} notifications={notifications} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} saveSuppliers={saveSuppliers} savePOCounter={savePOCounter} saveNotifications={saveNotifications} addNotifications={addNotifications} showToast={showToast} onLogout={handleLogout} />
       {toast && <Toast toast={toast} />}
     </>
   );

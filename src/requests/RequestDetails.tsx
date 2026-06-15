@@ -31,6 +31,16 @@ export function RequestDetails({ request: r, pos_all }) {
               <div><span className="text-slate-500">Delivery:</span> {r.deliveryTimeline}</div>
               <div><span className="text-slate-500">Terms:</span> {r.paymentTerms}</div>
               <div className="sm:col-span-2"><span className="text-slate-500">Scope:</span> <span className="whitespace-pre-wrap">{r.scope}</span></div>
+              {r.hasPI && (
+                <div className="sm:col-span-2 bg-teal-50 rounded p-2 border border-teal-200">
+                  <div className="text-xs font-bold text-teal-900 mb-1">🧾 Proforma Invoice{r.piNumber ? ` · ${r.piNumber}` : ""}</div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
+                    <span>Subtotal: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.subtotal || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                    <span>GST{r.piGstPct != null ? ` (${r.piGstPct}%)` : ""}: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.totalGST || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                    <span className="text-teal-900">Grand Total: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                  </div>
+                </div>
+              )}
               {r.lineItems && r.lineItems.length > 0 && (
                 <div className="sm:col-span-2 bg-purple-50 rounded p-2 border border-purple-200">
                   <div className="text-xs font-bold text-purple-900 mb-1">📋 Line Items ({r.lineItems.length})</div>

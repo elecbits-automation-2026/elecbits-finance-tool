@@ -1,26 +1,31 @@
 import { useState } from "react";
-import { Edit3, FileSignature, Briefcase, Target, AlertTriangle, Plus, X, CheckCircle2 } from "lucide-react";
+import { Edit3, FileSignature, Briefcase, Target, AlertTriangle, Plus, X, CheckCircle2, FileText } from "lucide-react";
 import { CURRENCIES, EXPENSE_TYPES, NON_PROJECT_DEPTS, GSTIN_REGEX, GST_RATES, UNIT_OPTIONS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
 import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
-import { computeLineItemTotals, getActiveBudgetForProject } from "../lib/finance";
+import { computeLineItemTotals, getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage } from "../lib/finance";
 import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
 
 // ============ NEW PO REQUEST FORM ============
-export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSuccess, editFor = null }) {
+export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [], savePOs, saveSuppliers, onSuccess, editFor = null }) {
   const isEdit = !!editFor;
   const [form, setForm] = useState<any>(isEdit ? {
     poNumber: "",
     isProject: editFor.isProject,
     projectId: editFor.projectId || "",
     category: editFor.category || "",
+    supplierId: "",
     supplierName: editFor.supplierName,
     supplierAddress: editFor.supplierAddress,
     supplierGST: editFor.supplierGST || "",
     isInternational: editFor.isInternational || false,
     supplierCountry: editFor.supplierCountry || "",
     supplierTaxId: editFor.supplierTaxId || "",
+    hasPI: editFor.hasPI || false,
+    piNumber: editFor.piNumber || "",
+    piSubtotal: editFor.piSubtotal != null ? String(editFor.piSubtotal) : "",
+    piGstPct: editFor.piGstPct != null ? editFor.piGstPct : 18,
     lineItems: editFor.lineItems && editFor.lineItems.length > 0 ? JSON.parse(JSON.stringify(editFor.lineItems)) : [{ id: "L1", description: "", qty: "", unit: "pcs", unitCost: "", gstPct: 18 }],
     currency: editFor.currency || "INR",
     fxRate: editFor.fxRate || 1,
@@ -34,8 +39,10 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
   } : {
     isProject: !NON_PROJECT_DEPTS.includes(user.dept),
     projectId: "", category: "",
+    supplierId: "",
     supplierName: "", supplierAddress: "", supplierGST: "",
     isInternational: false, supplierCountry: "", supplierTaxId: "",
+    hasPI: false, piNumber: "", piSubtotal: "", piGstPct: 18,
     lineItems: [{ id: "L1", description: "", qty: "", unit: "pcs", unitCost: "", gstPct: 18 }],
     currency: "INR", fxRate: 1,
     scope: "", deliveryTimeline: "", paymentTerms: "Net 30",
@@ -45,15 +52,48 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const totals = computeLineItemTotals(form.lineItems);
+  // Totals come from the PI figures when a Proforma Invoice is provided,
+  // otherwise from the line-items table. The two paths are mutually exclusive.
+  const piSubtotalNum = parseFloat(form.piSubtotal || 0);
+  const piGstPctNum = parseFloat(form.piGstPct || 0);
+  const piGSTAmount = piSubtotalNum * (piGstPctNum / 100);
+  const piTotals = { subtotal: piSubtotalNum, totalGST: piGSTAmount, grandTotal: piSubtotalNum + piGSTAmount };
+  const lineTotals = computeLineItemTotals(form.lineItems);
+  const totals = form.hasPI ? piTotals : lineTotals;
   const grandTotalINR = form.currency === "INR" ? totals.grandTotal : totals.grandTotal * parseFloat(form.fxRate || 0);
   const subtotalINR = form.currency === "INR" ? totals.subtotal : totals.subtotal * parseFloat(form.fxRate || 0);
   const gstINR = form.currency === "INR" ? totals.totalGST : totals.totalGST * parseFloat(form.fxRate || 0);
 
   const activeBudgets = budgets.filter(b => b.type === "Project" && (b.status === "Active" || b.currentStage === "Active"));
+
+  // Non-project (department) POs draw against the dept's Monthly Budget pool for
+  // the chosen category — same gate the payment form enforces. A PO can't be
+  // raised unless that pool exists for the current month.
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const monthlyBudget = (!form.isProject && form.category && !isEdit) ? getActiveMonthlyBudget(budgets, user.dept, form.category, currentMonth) : null;
+  const monthlyUsage = monthlyBudget ? getMonthlyBudgetUsage(requests, user.dept, form.category, currentMonth) : null;
+  const monthlyAvailable = monthlyBudget ? Math.max(0, monthlyBudget.amountINR - monthlyUsage.total) : 0;
   const eligibleApprovers = getEligibleDeptApprovers(user, { requiresProject: form.isProject, category: form.isProject ? "Project" : "Non-Project" }, form.isProject);
   const needsMid = needsBoxBuildMidApproval(user);
   const canRaiseProjectPO = !NON_PROJECT_DEPTS.includes(user.dept);
+
+  // Pick a supplier from the master: autofill name/address/GSTIN and lock those
+  // fields. The blank option ("") switches back to manual entry.
+  function selectSupplier(id) {
+    if (!id) { setForm({ ...form, supplierId: "" }); return; }
+    const s = suppliers.find(x => x.id === id);
+    if (!s) { setForm({ ...form, supplierId: "" }); return; }
+    setForm({
+      ...form, supplierId: id,
+      supplierName: s.name || "",
+      supplierAddress: s.address || "",
+      supplierGST: s.gstin || "",
+      isInternational: !!s.isInternational,
+      supplierCountry: s.country || "",
+      supplierTaxId: s.taxId || "",
+    });
+  }
+  const supplierLocked = !!form.supplierId;
 
   function addLineItem() {
     const newId = "L" + (form.lineItems.length + 1) + "-" + Date.now().toString(36);
@@ -93,13 +133,17 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
       if (!form.supplierCountry.trim()) return setErr("Country required for international supplier");
     }
 
-    // Line items validation
-    if (!form.lineItems || form.lineItems.length === 0) return setErr("At least 1 line item required");
-    for (let i = 0; i < form.lineItems.length; i++) {
-      const li = form.lineItems[i];
-      if (!li.description.trim()) return setErr(`Line ${i + 1}: description required`);
-      if (!li.qty || parseFloat(li.qty) <= 0) return setErr(`Line ${i + 1}: qty must be > 0`);
-      if (!li.unitCost || parseFloat(li.unitCost) <= 0) return setErr(`Line ${i + 1}: unit cost must be > 0`);
+    // Amount source: PI figures OR line items (mutually exclusive).
+    if (form.hasPI) {
+      if (!form.piSubtotal || parseFloat(form.piSubtotal) <= 0) return setErr("PI subtotal must be > 0");
+    } else {
+      if (!form.lineItems || form.lineItems.length === 0) return setErr("At least 1 line item required");
+      for (let i = 0; i < form.lineItems.length; i++) {
+        const li = form.lineItems[i];
+        if (!li.description.trim()) return setErr(`Line ${i + 1}: description required`);
+        if (!li.qty || parseFloat(li.qty) <= 0) return setErr(`Line ${i + 1}: qty must be > 0`);
+        if (!li.unitCost || parseFloat(li.unitCost) <= 0) return setErr(`Line ${i + 1}: unit cost must be > 0`);
+      }
     }
 
     if (totals.grandTotal <= 0) return setErr("Grand total must be > 0");
@@ -140,18 +184,50 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
       const budget = getActiveBudgetForProject(budgets, form.projectId);
       if (!budget) return setErr("Selected project has no active budget.");
     }
-    if (!form.attachment && !isEdit) return setErr("Vendor quote mandatory");
+    if (!form.isProject && !isEdit) {
+      if (!monthlyBudget) return setErr(`No active Monthly Budget for ${user.dept} → ${form.category} for ${currentMonth}. Ask your Dept Head to raise one before raising this PO.`);
+    }
+    if (!form.attachment && !isEdit) return setErr(form.hasPI ? "Proforma Invoice (PI) document mandatory" : "Vendor quote mandatory");
 
     setSubmitting(true);
     const now = new Date().toISOString();
     const selectedApproverIds = eligibleApprovers.map(a => a.id);
+
+    // Auto-save a manually-entered supplier to the master so it's available in
+    // the dropdown next time. Skip if an existing supplier was selected, or one
+    // with the same name/GSTIN already exists.
+    if (!form.supplierId && saveSuppliers && form.supplierName.trim()) {
+      const nameKey = form.supplierName.trim().toLowerCase();
+      const gstKey = (form.supplierGST || "").trim().toUpperCase();
+      const exists = suppliers.some(s =>
+        (s.name || "").trim().toLowerCase() === nameKey ||
+        (gstKey && (s.gstin || "").trim().toUpperCase() === gstKey)
+      );
+      if (!exists) {
+        const newSupplier = {
+          id: "SUP-" + Date.now(),
+          name: form.supplierName.trim(),
+          address: form.supplierAddress.trim(),
+          gstin: form.isInternational ? "" : gstKey,
+          isInternational: !!form.isInternational,
+          country: form.supplierCountry.trim(),
+          taxId: form.supplierTaxId.trim(),
+          createdBy: user.id, createdByName: user.name, createdAt: now,
+        };
+        await saveSuppliers([newSupplier, ...suppliers]);
+      }
+    }
 
     const baseData = {
       isProject: form.isProject, projectId: form.projectId, category: form.category,
       supplierName: form.supplierName, supplierAddress: form.supplierAddress,
       supplierGST: form.supplierGST.trim().toUpperCase(),
       isInternational: form.isInternational, supplierCountry: form.supplierCountry, supplierTaxId: form.supplierTaxId,
-      lineItems: JSON.parse(JSON.stringify(form.lineItems)),
+      hasPI: !!form.hasPI,
+      piNumber: form.hasPI ? form.piNumber.trim() : "",
+      piSubtotal: form.hasPI ? piSubtotalNum : undefined,
+      piGstPct: form.hasPI ? piGstPctNum : undefined,
+      lineItems: form.hasPI ? [] : JSON.parse(JSON.stringify(form.lineItems)),
       subtotal: totals.subtotal, totalGST: totals.totalGST,
       amount: totals.grandTotal, currency: form.currency, fxRate: parseFloat(form.fxRate), amountINR: grandTotalINR,
       scope: form.scope, deliveryTimeline: form.deliveryTimeline, paymentTerms: form.paymentTerms,
@@ -258,38 +334,104 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
           </div>
         )}
 
+        {/* Department budget gate: a non-project PO needs an active Monthly Budget
+            pool for the chosen category this month. */}
+        {!form.isProject && !isEdit && form.category && (
+          monthlyBudget ? (
+            <div className={`rounded-lg p-3 border ${grandTotalINR > monthlyAvailable && grandTotalINR > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
+              <div className="text-xs font-bold text-slate-900 mb-1.5">📊 {user.dept} Monthly Budget — {form.category} ({currentMonth})</div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="bg-white rounded p-1.5"><div className="text-slate-500">Approved</div><div className="font-bold">₹{(monthlyBudget.amountINR / 1000).toFixed(1)}K</div></div>
+                <div className="bg-white rounded p-1.5"><div className="text-slate-500">Used</div><div className="font-bold">₹{(monthlyUsage.total / 1000).toFixed(1)}K</div></div>
+                <div className="bg-white rounded p-1.5"><div className="text-slate-500">Available</div><div className="font-bold text-emerald-700">₹{(monthlyAvailable / 1000).toFixed(1)}K</div></div>
+              </div>
+              {grandTotalINR > monthlyAvailable && grandTotalINR > 0 && <div className="text-xs text-amber-700 font-semibold mt-1.5">⚠ This PO (₹{(grandTotalINR / 1000).toFixed(1)}K) exceeds the available pool. It can still be raised, but consider a Budget Extension.</div>}
+            </div>
+          ) : (
+            <div className="rounded-lg p-3 border bg-amber-50 border-amber-200 text-xs">
+              <div className="font-bold text-amber-900"><AlertTriangle className="w-4 h-4 inline mr-1" />No Monthly Budget for {form.category}</div>
+              <div className="text-amber-800 mt-0.5">{user.dept} has no active Monthly Budget for <strong>{form.category}</strong> in {currentMonth}. Ask your Dept Head to raise one before raising this PO.</div>
+            </div>
+          )
+        )}
+
         {/* Supplier Details */}
         <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-3">
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
             <div className="text-xs font-bold text-fuchsia-900"><Briefcase className="w-3.5 h-3.5 inline mr-1" />Supplier Details</div>
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-fuchsia-900 cursor-pointer">
-              <input type="checkbox" checked={form.isInternational} onChange={(e) => setForm({ ...form, isInternational: e.target.checked, supplierGST: e.target.checked ? "" : form.supplierGST })} className="w-3.5 h-3.5" />
+            <label className={`flex items-center gap-1.5 text-xs font-semibold text-fuchsia-900 ${supplierLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
+              <input type="checkbox" checked={form.isInternational} disabled={supplierLocked} onChange={(e) => setForm({ ...form, isInternational: e.target.checked, supplierGST: e.target.checked ? "" : form.supplierGST })} className="w-3.5 h-3.5" />
               International supplier (no GSTIN)
             </label>
           </div>
+
+          {/* Pick a saved supplier (autofills name / address / GSTIN) or enter manually */}
+          <div className="mb-3">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Saved Supplier</label>
+            <select value={form.supplierId} onChange={(e) => selectSupplier(e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white">
+              <option value="">{suppliers.length === 0 ? "No saved suppliers yet — enter manually below" : "— Enter manually (new supplier) —"}</option>
+              {suppliers.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(s => (
+                <option key={s.id} value={s.id}>{s.name}{s.gstin ? ` · ${s.gstin}` : s.isInternational ? " · Intl" : ""}</option>
+              ))}
+            </select>
+            {supplierLocked && <p className="text-xs text-fuchsia-700 mt-1">Autofilled from saved supplier. Choose “Enter manually” to override.</p>}
+            {!supplierLocked && form.supplierName.trim() && <p className="text-xs text-slate-500 mt-1">New supplier — will be saved for next time.</p>}
+          </div>
+
           <div className="space-y-2">
-            <div><label className="block text-xs font-semibold text-slate-700 mb-1">Supplier Name *</label><input value={form.supplierName} onChange={(e) => setForm({ ...form, supplierName: e.target.value })} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm" /></div>
-            <div><label className="block text-xs font-semibold text-slate-700 mb-1">Address *</label><textarea value={form.supplierAddress} onChange={(e) => setForm({ ...form, supplierAddress: e.target.value })} rows={2} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm" /></div>
+            <div><label className="block text-xs font-semibold text-slate-700 mb-1">Supplier Name *</label><input value={form.supplierName} onChange={(e) => setForm({ ...form, supplierName: e.target.value })} disabled={supplierLocked} className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm ${supplierLocked ? "bg-slate-100 text-slate-500" : ""}`} /></div>
+            <div><label className="block text-xs font-semibold text-slate-700 mb-1">Address *</label><textarea value={form.supplierAddress} onChange={(e) => setForm({ ...form, supplierAddress: e.target.value })} disabled={supplierLocked} rows={2} className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm ${supplierLocked ? "bg-slate-100 text-slate-500" : ""}`} /></div>
             {!form.isInternational ? (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">GSTIN * <span className="font-normal text-slate-500">(15 chars, e.g. 09AABCA1234A1ZP)</span></label>
-                <input value={form.supplierGST} onChange={(e) => setForm({ ...form, supplierGST: e.target.value.toUpperCase() })} placeholder="09AABCA1234A1ZP" className={`w-full px-3 py-1.5 border rounded-lg text-sm font-mono ${form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) ? "border-red-300 bg-red-50" : "border-slate-300"}`} maxLength={15} />
+                <input value={form.supplierGST} onChange={(e) => setForm({ ...form, supplierGST: e.target.value.toUpperCase() })} disabled={supplierLocked} placeholder="09AABCA1234A1ZP" className={`w-full px-3 py-1.5 border rounded-lg text-sm font-mono ${supplierLocked ? "bg-slate-100 text-slate-500 border-slate-300" : form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) ? "border-red-300 bg-red-50" : "border-slate-300"}`} maxLength={15} />
                 {form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) && <p className="text-xs text-red-600 mt-1">Invalid GSTIN format</p>}
                 {form.supplierGST && GSTIN_REGEX.test(form.supplierGST.trim()) && <p className="text-xs text-emerald-600 mt-1"><CheckCircle2 className="w-3 h-3 inline" /> Valid GSTIN</p>}
               </div>
             ) : (
               <div className="grid md:grid-cols-2 gap-2">
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">Country *</label><input value={form.supplierCountry} onChange={(e) => setForm({ ...form, supplierCountry: e.target.value })} placeholder="e.g. USA, Singapore" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm" /></div>
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">Tax ID / VAT (optional)</label><input value={form.supplierTaxId} onChange={(e) => setForm({ ...form, supplierTaxId: e.target.value })} placeholder="EIN / VAT / TIN" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-mono" /></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">Country *</label><input value={form.supplierCountry} onChange={(e) => setForm({ ...form, supplierCountry: e.target.value })} disabled={supplierLocked} placeholder="e.g. USA, Singapore" className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm ${supplierLocked ? "bg-slate-100 text-slate-500" : ""}`} /></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">Tax ID / VAT (optional)</label><input value={form.supplierTaxId} onChange={(e) => setForm({ ...form, supplierTaxId: e.target.value })} disabled={supplierLocked} placeholder="EIN / VAT / TIN" className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-mono ${supplierLocked ? "bg-slate-100 text-slate-500" : ""}`} /></div>
               </div>
             )}
           </div>
         </div>
 
+        {/* Proforma Invoice (PI) — when provided, the line-items table is disabled
+            and the PO total is taken from the PI figures instead. */}
+        <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={form.hasPI} onChange={(e) => setForm({ ...form, hasPI: e.target.checked, verified: false })} className="w-4 h-4 mt-0.5" />
+            <span>
+              <span className="text-xs font-bold text-teal-900"><FileText className="w-3.5 h-3.5 inline mr-1" />I have a Proforma Invoice (PI) for this PO</span>
+              <span className="block text-xs text-teal-700 mt-0.5">Tick this if you already have a PI from the supplier. You won't need to fill the line-items table — just enter the PI totals below and attach the PI document.</span>
+            </span>
+          </label>
+          {form.hasPI && (
+            <div className="mt-3 space-y-2">
+              <div className="grid md:grid-cols-3 gap-2">
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">PI Number (optional)</label><input value={form.piNumber} onChange={(e) => setForm({ ...form, piNumber: e.target.value })} placeholder="PI / Invoice ref" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm" /></div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">PI Subtotal (excl GST) *</label><input type="number" value={form.piSubtotal} onChange={(e) => setForm({ ...form, piSubtotal: e.target.value, verified: false })} placeholder={currencySymbol} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm" /></div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">GST % *</label>
+                  <select value={form.piGstPct} onChange={(e) => setForm({ ...form, piGstPct: parseFloat(e.target.value), verified: false })} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm">
+                    {GST_RATES.map(r => <option key={r} value={r}>{r}%</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="bg-white border border-teal-200 rounded p-2 text-xs flex flex-wrap gap-x-4 gap-y-0.5">
+                <span>Subtotal: <strong>{currencySymbol}{piTotals.subtotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                <span>GST: <strong>{currencySymbol}{piTotals.totalGST.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                <span className="text-teal-900">Grand Total: <strong>{currencySymbol}{piTotals.grandTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>{form.currency !== "INR" && ` (≈ ₹${grandTotalINR.toLocaleString("en-IN", { maximumFractionDigits: 2 })})`}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Line Items Table */}
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+        <div className={`bg-purple-50 border border-purple-200 rounded-lg p-3 ${form.hasPI ? "opacity-60" : ""}`}>
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-            <div className="text-xs font-bold text-purple-900">📋 Line Items *</div>
+            <div className="text-xs font-bold text-purple-900">📋 Line Items {form.hasPI ? <span className="font-normal text-purple-600">(disabled — using PI totals)</span> : "*"}</div>
             <div className="flex items-center gap-2">
               <select value={form.currency} onChange={(e) => {
                 const newCurr = e.target.value;
@@ -298,7 +440,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
               }} className="text-xs px-2 py-1 border border-purple-300 rounded-lg">
                 {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
               </select>
-              <button onClick={addLineItem} className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1"><Plus className="w-3 h-3" />Add Line</button>
+              <button onClick={addLineItem} disabled={form.hasPI} className="bg-purple-600 hover:bg-purple-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1"><Plus className="w-3 h-3" />Add Line</button>
             </div>
           </div>
           {form.currency !== "INR" && (
@@ -307,6 +449,11 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
               <div className="bg-emerald-50 border border-emerald-200 rounded p-1.5 text-xs"><span className="text-emerald-700">Grand Total in INR:</span> <strong className="text-emerald-900">₹{grandTotalINR.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></div>
             </div>
           )}
+          {form.hasPI ? (
+            <div className="text-xs text-purple-700 italic bg-white/60 border border-dashed border-purple-300 rounded p-3 text-center">
+              Line items aren't used for this PO — the total is taken from the Proforma Invoice above.
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -369,6 +516,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
               </tfoot>
             </table>
           </div>
+          )}
         </div>
 
         <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Scope Summary *</label><textarea value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} rows={2} placeholder="Brief overall scope (separate from line items)" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
@@ -390,14 +538,14 @@ export function NewPORequestForm({ user, budgets, pos, requests, savePOs, onSucc
           </>
         )}
 
-        <AttachmentInput form={form} setForm={setForm} handleFileUpload={handleFileUpload} required={!isEdit} label={isEdit ? "Updated Quote (optional)" : "Vendor Quote / Supporting Doc"} />
+        <AttachmentInput form={form} setForm={setForm} handleFileUpload={handleFileUpload} required={!isEdit} label={isEdit ? "Updated Quote / PI (optional)" : form.hasPI ? "Proforma Invoice (PI) Document" : "Vendor Quote / Supporting Doc"} />
 
         {/* Verify Total checkbox */}
         {totals.grandTotal > 0 && (
           <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-4">
             <div className="text-sm font-bold text-amber-900 mb-2">⚠ Please verify the totals before submitting</div>
             <div className="text-xs text-amber-800 mb-3 space-y-0.5">
-              <div>{form.lineItems.length} line item{form.lineItems.length !== 1 ? "s" : ""}</div>
+              <div>{form.hasPI ? `From Proforma Invoice${form.piNumber ? ` ${form.piNumber}` : ""}` : `${form.lineItems.length} line item${form.lineItems.length !== 1 ? "s" : ""}`}</div>
               <div>Subtotal (excl GST): <strong>{currencySymbol}{totals.subtotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></div>
               <div>+ GST: <strong>{currencySymbol}{totals.totalGST.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></div>
               <div className="text-base pt-1 border-t border-amber-300 mt-1">= <strong>Grand Total: {currencySymbol}{totals.grandTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>{form.currency !== "INR" && ` (≈ ₹${grandTotalINR.toLocaleString("en-IN", { maximumFractionDigits: 2 })})`}</div>
