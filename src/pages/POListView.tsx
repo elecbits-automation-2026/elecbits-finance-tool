@@ -7,7 +7,7 @@ import { AttachmentViewer } from "../components/AttachmentViewer";
 import { NewPORequestForm } from "../forms/NewPORequestForm";
 
 // ============ PO LIST VIEW ============
-export function POListView({ user, pos, requests, budgets, savePOs, savePOCounter, poCounter, addNotifications, showToast }) {
+export function POListView({ user, pos, requests, budgets, suppliers, savePOs, saveSuppliers, savePOCounter, poCounter, addNotifications, showToast }) {
   const [tab, setTab] = useState("approved");
   const [editTarget, setEditTarget] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
@@ -17,7 +17,7 @@ export function POListView({ user, pos, requests, budgets, savePOs, savePOCounte
     return (
       <div>
         <button onClick={() => setEditTarget(null)} className="mb-3 text-sm text-blue-600 hover:text-blue-700 font-medium">← Back to POs</button>
-        <NewPORequestForm user={user} budgets={budgets} pos={pos} requests={requests} savePOs={savePOs} editFor={editTarget} onSuccess={() => { setEditTarget(null); showToast("Edit request submitted", "success"); }} />
+        <NewPORequestForm user={user} budgets={budgets} pos={pos} requests={requests} suppliers={suppliers} savePOs={savePOs} saveSuppliers={saveSuppliers} editFor={editTarget} onSuccess={() => { setEditTarget(null); showToast("Edit request submitted", "success"); }} />
       </div>
     );
   }
@@ -144,6 +144,18 @@ function POCard({ po, requests, pos, user, onEdit, onCancel, onClose: onCloseMan
                 po.supplierGST && <div>GSTIN: <span className="font-mono">{po.supplierGST}</span></div>
               )}
             </div>
+
+            {po.hasPI && (
+              <div className="bg-teal-50 border border-teal-200 rounded-lg p-2">
+                <div className="font-bold text-teal-900 mb-1">🧾 Proforma Invoice{po.piNumber ? ` · ${po.piNumber}` : ""}</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                  <span>Subtotal: <strong>{(CURRENCIES.find(c => c.code === po.currency)?.symbol || "₹")}{(po.subtotal || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                  <span>GST{po.piGstPct != null ? ` (${po.piGstPct}%)` : ""}: <strong>{(CURRENCIES.find(c => c.code === po.currency)?.symbol || "₹")}{(po.totalGST || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                  <span className="text-teal-900">Grand Total: <strong>{(CURRENCIES.find(c => c.code === po.currency)?.symbol || "₹")}{(po.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                </div>
+                {po.currency !== "INR" && <div className="text-xs text-slate-500 mt-1">≈ ₹{(po.amountINR || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })} @ ₹{po.fxRate}/{po.currency}</div>}
+              </div>
+            )}
 
             {po.lineItems && po.lineItems.length > 0 && (
               <div>

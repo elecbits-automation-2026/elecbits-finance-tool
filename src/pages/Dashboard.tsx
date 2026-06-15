@@ -18,7 +18,7 @@ import { OrgOverview } from "./OrgOverview";
 import { RDAllocationView } from "./RDAllocationView";
 
 // ============ DASHBOARD ============
-export function Dashboard({ user, requests, budgets, pos, poCounter, notifications, saveRequests, saveBudgets, savePOs, savePOCounter, saveNotifications, addNotifications, showToast, onLogout }) {
+export function Dashboard({ user, requests, budgets, pos, suppliers, poCounter, notifications, saveRequests, saveBudgets, savePOs, saveSuppliers, savePOCounter, saveNotifications, addNotifications, showToast, onLogout }) {
   // Departments this user belongs to (primary + any admin-granted extras). A user
   // with more than one gets a per-department tab bar; the active tab re-scopes the
   // whole dashboard to that single department by passing it down as `user.dept`,
@@ -106,14 +106,14 @@ export function Dashboard({ user, requests, budgets, pos, poCounter, notificatio
         </div>
       )}
       <main className="max-w-7xl mx-auto px-4 py-5">
-        <UnifiedDashboard user={effectiveUser} view={view} setView={setView} requests={requests} budgets={budgets} pos={pos} poCounter={poCounter} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} inbox={inbox} addNotifications={addNotifications} showToast={showToast} />
+        <UnifiedDashboard user={effectiveUser} view={view} setView={setView} requests={requests} budgets={budgets} pos={pos} suppliers={suppliers} poCounter={poCounter} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} saveSuppliers={saveSuppliers} savePOCounter={savePOCounter} inbox={inbox} addNotifications={addNotifications} showToast={showToast} />
       </main>
     </div>
   );
 }
 
 // ============ UNIFIED DASHBOARD ============
-function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCounter, saveRequests, saveBudgets, savePOs, savePOCounter, inbox, addNotifications, showToast }) {
+function UnifiedDashboard({ user, view, setView, requests, budgets, pos, suppliers, poCounter, saveRequests, saveBudgets, savePOs, saveSuppliers, savePOCounter, inbox, addNotifications, showToast }) {
   // `user` here is the active-department view (effectiveUser), so `user.dept` is the
   // active tab. Scope a user's own requests/approvals to it so each department tab is
   // a self-contained dashboard. For single-department users this is a no-op.
@@ -153,7 +153,7 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, poCount
     }
   }
 
-  const commonProps = { user, requests, budgets, pos, poCounter, saveRequests, saveBudgets, savePOs, savePOCounter, addNotifications, showToast };
+  const commonProps = { user, requests, budgets, pos, suppliers, poCounter, saveRequests, saveBudgets, savePOs, saveSuppliers, savePOCounter, addNotifications, showToast };
 
   return (
     <div>

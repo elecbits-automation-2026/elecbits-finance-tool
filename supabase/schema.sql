@@ -102,6 +102,18 @@ create table if not exists public.pos (
 create index if not exists pos_status_idx on public.pos (status);
 create index if not exists pos_dept_idx   on public.pos (dept);
 
+-- suppliers: shared supplier master used to autofill PO supplier details.
+-- Auto-populated when a PO is raised with a manually-entered supplier.
+create table if not exists public.suppliers (
+  id         text primary key,
+  name       text not null,
+  gstin      text,
+  data       jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists suppliers_name_idx on public.suppliers (name);
+
 -- notifications: per-user inbox items.
 create table if not exists public.notifications (
   id           text primary key,
@@ -185,6 +197,7 @@ alter table public.profiles        enable row level security;
 alter table public.requests        enable row level security;
 alter table public.budgets         enable row level security;
 alter table public.pos             enable row level security;
+alter table public.suppliers       enable row level security;
 alter table public.notifications   enable row level security;
 alter table public.pending_signups enable row level security;
 alter table public.app_meta        enable row level security;
@@ -195,7 +208,7 @@ alter table public.roles           enable row level security;
 do $$
 declare t text;
 begin
-  foreach t in array array['requests','budgets','pos','notifications','app_meta']
+  foreach t in array array['requests','budgets','pos','suppliers','notifications','app_meta']
   loop
     execute format('drop policy if exists %1$I_auth_all on public.%1$I;', t);
     execute format($f$
