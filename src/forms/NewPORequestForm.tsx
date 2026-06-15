@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Edit3, FileSignature, Briefcase, Target, AlertTriangle, Plus, X, CheckCircle2, FileText } from "lucide-react";
+import { Edit3, FileSignature, Briefcase, Target, AlertTriangle, Plus, X, CheckCircle2, FileText, PencilLine } from "lucide-react";
 import { CURRENCIES, EXPENSE_TYPES, NON_PROJECT_DEPTS, GSTIN_REGEX, GST_RATES, UNIT_OPTIONS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
 import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
@@ -52,6 +52,13 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Track whether the user has edited any autofilled supplier fields.
+  // When true, the form treats the entry as a new supplier even if supplierId is set.
+  const [supplierEdited, setSupplierEdited] = useState(false);
+
+  // A supplier is "from the master" if one was selected and not subsequently edited.
+  const supplierFromMaster = !!form.supplierId && !supplierEdited;
+
   // Totals come from the PI figures when a Proforma Invoice is provided,
   // otherwise from the line-items table. The two paths are mutually exclusive.
   const piSubtotalNum = parseFloat(form.piSubtotal || 0);
@@ -66,9 +73,6 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
 
   const activeBudgets = budgets.filter(b => b.type === "Project" && (b.status === "Active" || b.currentStage === "Active"));
 
-  // Non-project (department) POs draw against the dept's Monthly Budget pool for
-  // the chosen category — same gate the payment form enforces. A PO can't be
-  // raised unless that pool exists for the current month.
   const currentMonth = new Date().toISOString().slice(0, 7);
   const monthlyBudget = (!form.isProject && form.category && !isEdit) ? getActiveMonthlyBudget(budgets, user.dept, form.category, currentMonth) : null;
   const monthlyUsage = monthlyBudget ? getMonthlyBudgetUsage(requests, user.dept, form.category, currentMonth) : null;
@@ -77,9 +81,11 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
   const needsMid = needsBoxBuildMidApproval(user);
   const canRaiseProjectPO = !NON_PROJECT_DEPTS.includes(user.dept);
 
-  // Pick a supplier from the master: autofill name/address/GSTIN and lock those
-  // fields. The blank option ("") switches back to manual entry.
+  // Pick a supplier from the master: autofill name/address/GSTIN.
+  // Fields remain editable — if the user changes anything, supplierEdited flips
+  // to true and the entry is saved as a new supplier on submit.
   function selectSupplier(id) {
+    setSupplierEdited(false);
     if (!id) { setForm({ ...form, supplierId: "" }); return; }
     const s = suppliers.find(x => x.id === id);
     if (!s) { setForm({ ...form, supplierId: "" }); return; }
@@ -93,7 +99,12 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
       supplierTaxId: s.taxId || "",
     });
   }
-  const supplierLocked = !!form.supplierId;
+
+  // Helper: update a supplier field and mark it as edited (so it saves as new).
+  function updateSupplierField(field: string, value: any) {
+    if (form.supplierId) setSupplierEdited(true);
+    setForm({ ...form, [field]: value });
+  }
 
   function addLineItem() {
     const newId = "L" + (form.lineItems.length + 1) + "-" + Date.now().toString(36);
@@ -161,7 +172,6 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
       if (!form.editReason.trim()) return setErr("Reason for edit required");
       if (!form.changeNote.trim()) return setErr("What's changing — required");
 
-      // Re-validate against project budget if amount increases
       if (form.isProject && form.projectId && grandTotalINR > editFor.amountINR) {
         const budget = getActiveBudgetForProject(budgets, form.projectId);
         if (budget) {
@@ -193,15 +203,18 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
     const now = new Date().toISOString();
     const selectedApproverIds = eligibleApprovers.map(a => a.id);
 
-    // Auto-save a manually-entered supplier to the master so it's available in
-    // the dropdown next time. Skip if an existing supplier was selected, or one
-    // with the same name/GSTIN already exists.
-    if (!form.supplierId && saveSuppliers && form.supplierName.trim()) {
+    // Save to the supplier master when:
+    //   a) no supplier was selected (brand new), OR
+    //   b) a supplier was selected but the user edited the details (save as new entry)
+    // Never overwrite an existing master entry — always insert a new one.
+    const isNewEntry = !form.supplierId || supplierEdited;
+    if (isNewEntry && saveSuppliers && form.supplierName.trim()) {
       const nameKey = form.supplierName.trim().toLowerCase();
       const gstKey = (form.supplierGST || "").trim().toUpperCase();
+      // Only skip if an entry with the exact same name AND GSTIN already exists.
       const exists = suppliers.some(s =>
-        (s.name || "").trim().toLowerCase() === nameKey ||
-        (gstKey && (s.gstin || "").trim().toUpperCase() === gstKey)
+        (s.name || "").trim().toLowerCase() === nameKey &&
+        (gstKey ? (s.gstin || "").trim().toUpperCase() === gstKey : true)
       );
       if (!exists) {
         const newSupplier = {
@@ -334,8 +347,6 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
           </div>
         )}
 
-        {/* Department budget gate: a non-project PO needs an active Monthly Budget
-            pool for the chosen category this month. */}
         {!form.isProject && !isEdit && form.category && (
           monthlyBudget ? (
             <div className={`rounded-lg p-3 border ${grandTotalINR > monthlyAvailable && grandTotalINR > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
@@ -359,13 +370,13 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
         <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-3">
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
             <div className="text-xs font-bold text-fuchsia-900"><Briefcase className="w-3.5 h-3.5 inline mr-1" />Supplier Details</div>
-            <label className={`flex items-center gap-1.5 text-xs font-semibold text-fuchsia-900 ${supplierLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
-              <input type="checkbox" checked={form.isInternational} disabled={supplierLocked} onChange={(e) => setForm({ ...form, isInternational: e.target.checked, supplierGST: e.target.checked ? "" : form.supplierGST })} className="w-3.5 h-3.5" />
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-fuchsia-900 cursor-pointer">
+              <input type="checkbox" checked={form.isInternational} onChange={(e) => updateSupplierField("isInternational", e.target.checked)} className="w-3.5 h-3.5" />
               International supplier (no GSTIN)
             </label>
           </div>
 
-          {/* Pick a saved supplier (autofills name / address / GSTIN) or enter manually */}
+          {/* Pick from saved suppliers (autofills but stays editable) */}
           <div className="mb-3">
             <label className="block text-xs font-semibold text-slate-700 mb-1">Saved Supplier</label>
             <select value={form.supplierId} onChange={(e) => selectSupplier(e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white">
@@ -374,31 +385,82 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
                 <option key={s.id} value={s.id}>{s.name}{s.gstin ? ` · ${s.gstin}` : s.isInternational ? " · Intl" : ""}</option>
               ))}
             </select>
-            {supplierLocked && <p className="text-xs text-fuchsia-700 mt-1">Autofilled from saved supplier. Choose “Enter manually” to override.</p>}
-            {!supplierLocked && form.supplierName.trim() && <p className="text-xs text-slate-500 mt-1">New supplier — will be saved for next time.</p>}
+
+            {/* Contextual hint depending on state */}
+            {supplierFromMaster && (
+              <p className="text-xs text-fuchsia-700 mt-1 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 shrink-0" />
+                Autofilled from saved supplier — you can edit any field below if needed.
+              </p>
+            )}
+            {form.supplierId && supplierEdited && (
+              <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                <PencilLine className="w-3 h-3 shrink-0" />
+                Details edited — will be saved as a new supplier entry on submit.
+              </p>
+            )}
+            {!form.supplierId && form.supplierName.trim() && (
+              <p className="text-xs text-slate-500 mt-1">New supplier — will be saved for next time.</p>
+            )}
           </div>
 
           <div className="space-y-2">
-            <div><label className="block text-xs font-semibold text-slate-700 mb-1">Supplier Name *</label><input value={form.supplierName} onChange={(e) => setForm({ ...form, supplierName: e.target.value })} disabled={supplierLocked} className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm ${supplierLocked ? "bg-slate-100 text-slate-500" : ""}`} /></div>
-            <div><label className="block text-xs font-semibold text-slate-700 mb-1">Address *</label><textarea value={form.supplierAddress} onChange={(e) => setForm({ ...form, supplierAddress: e.target.value })} disabled={supplierLocked} rows={2} className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm ${supplierLocked ? "bg-slate-100 text-slate-500" : ""}`} /></div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Supplier Name *</label>
+              <input
+                value={form.supplierName}
+                onChange={(e) => updateSupplierField("supplierName", e.target.value)}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Address *</label>
+              <textarea
+                value={form.supplierAddress}
+                onChange={(e) => updateSupplierField("supplierAddress", e.target.value)}
+                rows={2}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
+              />
+            </div>
             {!form.isInternational ? (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">GSTIN * <span className="font-normal text-slate-500">(15 chars, e.g. 09AABCA1234A1ZP)</span></label>
-                <input value={form.supplierGST} onChange={(e) => setForm({ ...form, supplierGST: e.target.value.toUpperCase() })} disabled={supplierLocked} placeholder="09AABCA1234A1ZP" className={`w-full px-3 py-1.5 border rounded-lg text-sm font-mono ${supplierLocked ? "bg-slate-100 text-slate-500 border-slate-300" : form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) ? "border-red-300 bg-red-50" : "border-slate-300"}`} maxLength={15} />
+                <input
+                  value={form.supplierGST}
+                  onChange={(e) => updateSupplierField("supplierGST", e.target.value.toUpperCase())}
+                  placeholder="09AABCA1234A1ZP"
+                  className={`w-full px-3 py-1.5 border rounded-lg text-sm font-mono ${form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) ? "border-red-300 bg-red-50" : "border-slate-300"}`}
+                  maxLength={15}
+                />
                 {form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) && <p className="text-xs text-red-600 mt-1">Invalid GSTIN format</p>}
                 {form.supplierGST && GSTIN_REGEX.test(form.supplierGST.trim()) && <p className="text-xs text-emerald-600 mt-1"><CheckCircle2 className="w-3 h-3 inline" /> Valid GSTIN</p>}
               </div>
             ) : (
               <div className="grid md:grid-cols-2 gap-2">
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">Country *</label><input value={form.supplierCountry} onChange={(e) => setForm({ ...form, supplierCountry: e.target.value })} disabled={supplierLocked} placeholder="e.g. USA, Singapore" className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm ${supplierLocked ? "bg-slate-100 text-slate-500" : ""}`} /></div>
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">Tax ID / VAT (optional)</label><input value={form.supplierTaxId} onChange={(e) => setForm({ ...form, supplierTaxId: e.target.value })} disabled={supplierLocked} placeholder="EIN / VAT / TIN" className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-mono ${supplierLocked ? "bg-slate-100 text-slate-500" : ""}`} /></div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Country *</label>
+                  <input
+                    value={form.supplierCountry}
+                    onChange={(e) => updateSupplierField("supplierCountry", e.target.value)}
+                    placeholder="e.g. USA, Singapore"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Tax ID / VAT (optional)</label>
+                  <input
+                    value={form.supplierTaxId}
+                    onChange={(e) => updateSupplierField("supplierTaxId", e.target.value)}
+                    placeholder="EIN / VAT / TIN"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-mono"
+                  />
+                </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Proforma Invoice (PI) — when provided, the line-items table is disabled
-            and the PO total is taken from the PI figures instead. */}
+        {/* Proforma Invoice toggle */}
         <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
           <label className="flex items-start gap-2 cursor-pointer">
             <input type="checkbox" checked={form.hasPI} onChange={(e) => setForm({ ...form, hasPI: e.target.checked, verified: false })} className="w-4 h-4 mt-0.5" />
@@ -459,10 +521,10 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
               <thead>
                 <tr className="text-left text-slate-600 font-semibold border-b border-purple-200">
                   <th className="p-1 w-8">#</th>
-                  <th className="p-1">Description *</th>
-                  <th className="p-1 w-16">Qty *</th>
+                  <th className="p-1">Description</th>
+                  <th className="p-1 w-16">Qty</th>
                   <th className="p-1 w-20">Unit</th>
-                  <th className="p-1 w-24">Unit Cost *</th>
+                  <th className="p-1 w-24">Unit Cost</th>
                   <th className="p-1 w-16">GST %</th>
                   <th className="p-1 w-24 text-right">Line Total</th>
                   <th className="p-1 w-8"></th>
