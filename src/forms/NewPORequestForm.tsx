@@ -552,7 +552,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
             </div>
             <label className="flex items-start gap-2 cursor-pointer">
               <input type="checkbox" checked={form.verified} onChange={(e) => setForm({ ...form, verified: e.target.checked })} className="w-4 h-4 mt-0.5" />
-              <span className="text-xs font-semibold text-amber-900">I have verified all line items, quantities, unit costs, and GST rates are correct.</span>
+              <span className="text-xs font-semibold text-amber-900">{form.hasPI ? "I have verified the Proforma Invoice subtotal, GST, and grand total are correct." : "I have verified all line items, quantities, unit costs, and GST rates are correct."}</span>
             </label>
           </div>
         )}
@@ -561,6 +561,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
         {err && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">{err}</div>}
         <div className="flex gap-2">
           <button onClick={submit} disabled={submitting || !form.verified} className="bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-400 text-white font-semibold px-5 py-2.5 rounded-lg text-sm">{submitting ? "Submitting…" : (isEdit ? "Submit Edit Request" : "Submit PO Request")}</button>
+          {!form.verified && totals.grandTotal > 0 && <span className="text-xs text-amber-700 self-center">⬆ Tick the verification checkbox above to enable submit.</span>}
         </div>
       </div>
     </div>
