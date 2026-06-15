@@ -11,6 +11,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
   const [busy, setBusy] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ utr: "", paymentMode: "Bank Transfer", paymentDate: new Date().toISOString().slice(0, 10), proofAttachment: null, note: "" });
   const [poNumberInput, setPONumberInput] = useState("");
+  const [poAttachment, setPOAttachment] = useState<{ name: string; size: number; type: string; data: any; uploadedAt: string } | null>(null);
 
   const isBudget = request.kind === "Budget";
   const isPO = request.kind === "PO";
@@ -31,6 +32,24 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
     const reader = new FileReader();
     reader.onload = (ev) => { setPaymentForm({ ...paymentForm, proofAttachment: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } }); };
     reader.readAsDataURL(file);
+  }
+
+  async function handlePOAttachmentUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert("Max 2MB."); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setPOAttachment({ name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function resetPOAssignForm() {
+    setMode(null);
+    setComments("");
+    setPONumberInput("");
+    setPOAttachment(null);
   }
 
   async function doAction(actionType) {
@@ -91,7 +110,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
               }
 
               if (showToast) showToast(`PO ${originalPO.poNumber} updated to v${newVersion}`, "success");
-              setBusy(false); setMode(null); setComments(""); setPONumberInput(""); return;
+              setBusy(false); resetPOAssignForm(); return;
             }
           } else if (request.type === "POCancel") {
             const originalPO = pos_all.find(p => p.id === request.cancellingPOId);
@@ -109,14 +128,20 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
               }
 
               if (showToast) showToast(`PO ${originalPO.poNumber} cancelled`, "warning");
-              setBusy(false); setMode(null); setComments(""); setPONumberInput(""); return;
+              setBusy(false); resetPOAssignForm(); return;
             }
           } else {
-            // POCreate: assign PO number
+            // POCreate: assign PO number + optional PO document
             const newCounter = poCounter + 1;
             const assignedNumber = poNumberInput.trim() || formatPONumber(newCounter);
             await savePOCounter(newCounter);
-            extraUpdates = { poNumber: assignedNumber, approvedBy: `${user.name} (${user.designation})`, approvedDate: now };
+            extraUpdates = {
+              poNumber: assignedNumber,
+              approvedBy: `${user.name} (${user.designation})`,
+              approvedDate: now,
+              // Attach the signed/stamped PO document if the accountant uploaded one
+              ...(poAttachment ? { poDocument: poAttachment } : {}),
+            };
             newStage = "Approved"; newStatus = "Approved";
             actionLabel = `PO Number Assigned: ${assignedNumber}`;
           }
@@ -136,7 +161,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
             }
 
             if (showToast) showToast(`PO ${originalPO.poNumber} cancelled`, "warning");
-            setBusy(false); setMode(null); setComments(""); setPONumberInput(""); return;
+            setBusy(false); resetPOAssignForm(); return;
           }
         } else if (request.currentStage === "DeptApproval" && request.selectedApprovers && request.selectedApprovers.length > 1) {
           const approvalsReceived = request.history.filter(h => h.action === "Approved (Dept)").length + 1;
@@ -238,7 +263,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
     if (actionType === "approve" && showToast) showToast("Approved", "success");
     if (actionType === "reject" && showToast) showToast("Rejected", "info");
 
-    setBusy(false); setMode(null); setComments(""); setPONumberInput("");
+    setBusy(false); resetPOAssignForm();
     setPaymentForm({ utr: "", paymentMode: "Bank Transfer", paymentDate: new Date().toISOString().slice(0, 10), proofAttachment: null, note: "" });
   }
 
@@ -296,8 +321,10 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
         <div className="space-y-3 bg-fuchsia-50 p-4 rounded-lg border border-fuchsia-200">
           <div className="text-sm font-semibold text-fuchsia-900 flex items-center gap-1.5">
             <FileSignature className="w-4 h-4" />
-            {request.type === "POEdit" ? `Apply Edit to ${request.editingPONumber}` : request.type === "POCancel" ? `Cancel ${request.cancellingPONumber}` : "Assign PO Number"}
+            {request.type === "POEdit" ? `Apply Edit to ${request.editingPONumber}` : request.type === "POCancel" ? `Cancel ${request.cancellingPONumber}` : "Assign PO Number & Attach Document"}
           </div>
+
+          {/* PO number field — only for POCreate */}
           {request.type !== "POEdit" && request.type !== "POCancel" && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">PO Number</label>
@@ -305,6 +332,36 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
               <p className="text-xs text-slate-500 mt-1">Leave blank to auto-assign {formatPONumber(poCounter + 1)}, or type a custom number.</p>
             </div>
           )}
+
+          {/* PO document upload — for POCreate only (edit/cancel don't issue a new PO doc) */}
+          {request.type !== "POEdit" && request.type !== "POCancel" && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                PO Document <span className="font-normal text-slate-500">(signed / stamped — optional but recommended)</span>
+              </label>
+              {!poAttachment ? (
+                <label className="flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-fuchsia-300 rounded-lg cursor-pointer hover:border-fuchsia-500 hover:bg-fuchsia-100/50 text-xs text-slate-600 transition">
+                  <Upload className="w-4 h-4 text-fuchsia-500" />
+                  <span>Upload signed PO document <span className="text-slate-400">(PDF, PNG, JPG — max 2 MB)</span></span>
+                  <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={handlePOAttachmentUpload} />
+                </label>
+              ) : (
+                <div className="bg-white border border-fuchsia-200 rounded-lg p-2.5 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <Paperclip className="w-3.5 h-3.5 text-fuchsia-600 shrink-0" />
+                    <div>
+                      <div className="font-semibold text-slate-900">{poAttachment.name}</div>
+                      <div className="text-slate-500">{(poAttachment.size / 1024).toFixed(1)} KB</div>
+                    </div>
+                  </div>
+                  <button onClick={() => setPOAttachment(null)} className="text-red-500 hover:bg-red-50 p-1 rounded" title="Remove">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Comment (optional)</label>
             <textarea value={comments} onChange={(e) => setComments(e.target.value)} rows={2} className="w-full text-xs px-2 py-1.5 border border-slate-200 rounded-lg" />
@@ -313,7 +370,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
             <button onClick={() => doAction("approve")} disabled={busy} className="bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-400 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
               {request.type === "POEdit" ? "Apply Edit" : request.type === "POCancel" ? "Confirm Cancellation" : "Assign & Approve"}
             </button>
-            <button onClick={() => { setMode(null); setComments(""); setPONumberInput(""); }} className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg">Cancel</button>
+            <button onClick={resetPOAssignForm} className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
