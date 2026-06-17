@@ -7,7 +7,7 @@ export function CancelButton({ request, user, requests_all, budgets_all, pos_all
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const isBudget = request.kind === "Budget";
-  const isPO = request.kind === "PO";
+  const isPOorPI = request.kind === "PO" || request.kind === "PI";
 
   async function doCancel() {
     if (!reason.trim()) { alert("Reason required"); return; }
@@ -15,7 +15,7 @@ export function CancelButton({ request, user, requests_all, budgets_all, pos_all
     const now = new Date().toISOString();
     const updateFn = (item) => item.id === request.id ? { ...item, status: "Cancelled", currentStage: "Cancelled", history: [...item.history, { action: "Cancelled by requester", by: user.name, byId: user.id, at: now, comments: reason }] } : item;
     if (isBudget) await saveBudgets(budgets_all.map(updateFn));
-    else if (isPO) await savePOs(pos_all.map(updateFn));
+    else if (isPOorPI) await savePOs(pos_all.map(updateFn));
     else await saveRequests(requests_all.map(updateFn));
     setBusy(false); setShowForm(false); setReason("");
   }

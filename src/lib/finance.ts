@@ -93,3 +93,4 @@ export function getPOAvailable(po, requests) {
   return Math.max(0, po.amountINR - usage.total);
 }
 export function formatPONumber(num) { return `Az-PO-2526-${String(num).padStart(4, "0")}`; }
+export function formatPINumber(num) { return `Az-PI-2526-${String(num).padStart(4, "0")}`; }

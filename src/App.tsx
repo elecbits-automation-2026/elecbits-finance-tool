@@ -15,6 +15,7 @@ export default function App() {
   const [pos, setPOs] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [poCounter, setPOCounter] = useState(2);
+  const [piCounter, setPICounter] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -90,6 +91,15 @@ export default function App() {
       setPOCounter(0);
     }
 
+    // PI Counter
+    try {
+      const c = await db.fetchPICounter();
+      setPICounter(c != null ? c : 0);
+    } catch (err) {
+      console.log("PI counter load failed, using 0:", err?.message);
+      setPICounter(0);
+    }
+
     // Notifications
     try {
       setNotifications(await db.fetchNotifications());
@@ -119,6 +129,7 @@ export default function App() {
   async function savePOs(v) { setPOs(v); try { await db.savePOs(v); } catch (e) { console.error("savePOs failed:", e?.message); } }
   async function saveSuppliers(v) { setSuppliers(v); try { await db.saveSuppliers(v); } catch (e) { console.error("saveSuppliers failed:", e?.message); } }
   async function savePOCounter(v) { setPOCounter(v); try { await db.savePOCounter(v); } catch (e) { console.error("savePOCounter failed:", e?.message); } }
+  async function savePICounter(v) { setPICounter(v); try { await db.savePICounter(v); } catch (e) { console.error("savePICounter failed:", e?.message); } }
   async function saveNotifications(v) { setNotifications(v); try { await db.saveNotifications(v); } catch (e) { console.error("saveNotifications failed:", e?.message); } }
   function showToast(message, type = "info") { setToast({ message, type, id: Date.now() }); setTimeout(() => setToast(null), 3000); }
   async function addNotifications(newOnes) { await saveNotifications([...newOnes, ...notifications]); }
@@ -145,7 +156,7 @@ export default function App() {
   );
   return (
     <>
-      <Dashboard user={currentUser} requests={requests} budgets={budgets} pos={pos} suppliers={suppliers} poCounter={poCounter} notifications={notifications} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} saveSuppliers={saveSuppliers} savePOCounter={savePOCounter} saveNotifications={saveNotifications} addNotifications={addNotifications} showToast={showToast} onLogout={handleLogout} />
+      <Dashboard user={currentUser} requests={requests} budgets={budgets} pos={pos} suppliers={suppliers} poCounter={poCounter} piCounter={piCounter} notifications={notifications} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} saveSuppliers={saveSuppliers} savePOCounter={savePOCounter} savePICounter={savePICounter} saveNotifications={saveNotifications} addNotifications={addNotifications} showToast={showToast} onLogout={handleLogout} />
       {toast && <Toast toast={toast} />}
     </>
   );

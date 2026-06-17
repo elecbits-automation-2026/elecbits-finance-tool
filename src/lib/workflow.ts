@@ -61,12 +61,15 @@ export function needsBoxBuildMidApproval(requester) {
 }
 
 export function computeNextStage(request, currentStage, approver) {
-  // Super manager override (only for Payment and Budget, not for PO at SuperManagerApproval which is their actual stage)
+  // PI follows the exact same routing as PO throughout this function.
+  const isPOorPI = request.kind === "PO" || request.kind === "PI";
+  const isEditOrCancel = ["POEdit", "POCancel", "PIEdit", "PICancel"].includes(request.type);
+  // Super manager override (only for Payment and Budget, not for PO/PI at SuperManagerApproval which is their actual stage)
   if (approver && approver.role === "SuperManager") {
-    if (request.kind !== "PO" || currentStage !== "SuperManagerApproval") {
+    if (!(isPOorPI && currentStage === "SuperManagerApproval")) {
       if (["BoxBuildMid", "DeptApproval", "VP", "CEO", "FinanceHead"].includes(currentStage)) {
         if (request.kind === "Budget") return "Active";
-        if (request.kind === "PO") return "Accountant";
+        if (isPOorPI) return "Accountant";
         return "Accountant";
       }
     }
@@ -78,8 +81,8 @@ export function computeNextStage(request, currentStage, approver) {
   // first sign-off after the department and never the last.
   if (currentStage === "DeptApproval") return "FinanceHead";
   if (currentStage === "FinanceHead") {
-    // PO Edit/Cancel are not re-escalated up the chain — straight to processing.
-    if (request.kind === "PO" && (request.type === "POEdit" || request.type === "POCancel")) {
+    // PO/PI Edit/Cancel are not re-escalated up the chain — straight to processing.
+    if (isPOorPI && isEditOrCancel) {
       return "Accountant";
     }
     // Budgets at or above the CEO threshold are reviewed by BOTH the VP and the CEO
@@ -89,7 +92,7 @@ export function computeNextStage(request, currentStage, approver) {
       if (request.amountINR >= VP_THRESHOLD) return "VP";
       return "Active";
     }
-    if (request.kind === "PO") {
+    if (isPOorPI) {
       if (request.amountINR >= VP_THRESHOLD) return "VP"; // VP first, then SuperManager for ≥5L
       return "Accountant";
     }
@@ -103,7 +106,7 @@ export function computeNextStage(request, currentStage, approver) {
       if (request.amountINR >= CEO_THRESHOLD) return "CEO";
       return "Active";
     }
-    if (request.kind === "PO") {
+    if (isPOorPI) {
       if (request.amountINR >= CEO_THRESHOLD) return "SuperManagerApproval";
       return "Accountant";
     }
@@ -115,7 +118,7 @@ export function computeNextStage(request, currentStage, approver) {
   }
   if (currentStage === "SuperManagerApproval") return "Accountant";
   if (currentStage === "Accountant") {
-    if (request.kind === "PO") return "Approved";
+    if (isPOorPI) return "Approved";
     return "Paid";
   }
   return currentStage;
@@ -134,14 +137,14 @@ export function getStageLabel(stage, kind = "Payment") {
       "Cancelled": "Cancelled",
     }[stage] || stage;
   }
-  if (kind === "PO") {
+  if (kind === "PO" || kind === "PI") {
     return {
       "BoxBuildMid": "Pending Delivery Head (Arun)",
       "DeptApproval": "Pending Dept Head",
       "VP": "Pending VP",
       "SuperManagerApproval": "Pending Stuti + Sarthak",
       "FinanceHead": "Pending Finance Head",
-      "Accountant": "Pending PO Number Assignment",
+      "Accountant": kind === "PI" ? "Pending PI Number Assignment" : "Pending PO Number Assignment",
       "Approved": "Approved",
       "Closed": "Closed",
       "Rejected": "Rejected",

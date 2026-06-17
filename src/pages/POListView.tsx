@@ -37,8 +37,10 @@ export function POListView({ user, pos, requests, budgets, suppliers, savePOs, s
     setCloseTarget(null);
   }
 
+  // PI records live in the same array but belong to their own view.
+  const poRecords = pos.filter(p => p.kind !== "PI");
   // Read-only viewers only see their own department's POs.
-  const scopedPos = isReadOnly(user) ? pos.filter(p => p.dept === user.dept) : pos;
+  const scopedPos = isReadOnly(user) ? poRecords.filter(p => p.dept === user.dept) : poRecords;
 
   // Only show actual PO records (POCreate) — edits/cancels are tracked elsewhere
   const allPOs = scopedPos.filter(p => p.type === "POCreate");
