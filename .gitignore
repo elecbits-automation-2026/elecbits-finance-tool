@@ -24,3 +24,6 @@ yarn-error.log*
 
 # Supabase CLI local temp
 supabase/.temp/
+
+# Personal daily work tracker — kept local, not pushed
+docs/daily-work-sheet/
