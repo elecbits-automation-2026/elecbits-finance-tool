@@ -8,17 +8,19 @@ import { RequestList } from "../requests/RequestList";
 import { NewPaymentRequestForm } from "../forms/NewPaymentRequestForm";
 import { NewBudgetRequestForm } from "../forms/NewBudgetRequestForm";
 import { NewPORequestForm } from "../forms/NewPORequestForm";
+import { NewPIRequestForm } from "../forms/NewPIRequestForm";
 import { InboxView } from "./InboxView";
 import { MyRequestsView } from "./MyRequestsView";
 import { MyApprovalsView } from "./MyApprovalsView";
 import { BudgetView } from "./BudgetView";
 import { POListView } from "./POListView";
+import { PIListView } from "./PIListView";
 import { ReportsView } from "./ReportsView";
 import { OrgOverview } from "./OrgOverview";
 import { RDAllocationView } from "./RDAllocationView";
 
 // ============ DASHBOARD ============
-export function Dashboard({ user, requests, budgets, pos, suppliers, poCounter, notifications, saveRequests, saveBudgets, savePOs, saveSuppliers, savePOCounter, saveNotifications, addNotifications, showToast, onLogout }) {
+export function Dashboard({ user, requests, budgets, pos, suppliers, poCounter, piCounter, notifications, saveRequests, saveBudgets, savePOs, saveSuppliers, savePOCounter, savePICounter, saveNotifications, addNotifications, showToast, onLogout }) {
   // Departments this user belongs to (primary + any admin-granted extras). A user
   // with more than one gets a per-department tab bar; the active tab re-scopes the
   // whole dashboard to that single department by passing it down as `user.dept`,
@@ -106,14 +108,14 @@ export function Dashboard({ user, requests, budgets, pos, suppliers, poCounter, 
         </div>
       )}
       <main className="max-w-7xl mx-auto px-4 py-5">
-        <UnifiedDashboard user={effectiveUser} view={view} setView={setView} requests={requests} budgets={budgets} pos={pos} suppliers={suppliers} poCounter={poCounter} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} saveSuppliers={saveSuppliers} savePOCounter={savePOCounter} inbox={inbox} addNotifications={addNotifications} showToast={showToast} />
+        <UnifiedDashboard user={effectiveUser} view={view} setView={setView} requests={requests} budgets={budgets} pos={pos} suppliers={suppliers} poCounter={poCounter} piCounter={piCounter} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} saveSuppliers={saveSuppliers} savePOCounter={savePOCounter} savePICounter={savePICounter} inbox={inbox} addNotifications={addNotifications} showToast={showToast} />
       </main>
     </div>
   );
 }
 
 // ============ UNIFIED DASHBOARD ============
-function UnifiedDashboard({ user, view, setView, requests, budgets, pos, suppliers, poCounter, saveRequests, saveBudgets, savePOs, saveSuppliers, savePOCounter, inbox, addNotifications, showToast }) {
+function UnifiedDashboard({ user, view, setView, requests, budgets, pos, suppliers, poCounter, piCounter, saveRequests, saveBudgets, savePOs, saveSuppliers, savePOCounter, savePICounter, inbox, addNotifications, showToast }) {
   // `user` here is the active-department view (effectiveUser), so `user.dept` is the
   // active tab. Scope a user's own requests/approvals to it so each department tab is
   // a self-contained dashboard. For single-department users this is a no-op.
@@ -136,15 +138,18 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, supplie
   if (readOnly) {
     tabs.push({ id: "budgets", label: "Dept Budgets", icon: Target });
     tabs.push({ id: "pos", label: "Dept POs", icon: FileSignature });
+    tabs.push({ id: "pis", label: "Dept PIs", icon: FileText });
   } else {
     if (inbox.length > 0 || user.role !== "Employee") tabs.push({ id: "inbox", label: "Action - Need to do", icon: Clock, count: inbox.length, highlight: inbox.length > 0 });
     tabs.push({ id: "my-requests", label: "My Requests", icon: FileText, count: myItems.length });
     if (canSeeMyApprovals) tabs.push({ id: "my-approvals", label: "My Approvals", icon: CheckSquare, count: myApprovalItems.length });
     tabs.push({ id: "new-budget", label: "Raise Budget", icon: PiggyBank });
     tabs.push({ id: "new-po", label: "Raise PO", icon: FileSignature });
+    tabs.push({ id: "new-pi", label: "Raise PI", icon: FileText });
     tabs.push({ id: "new-payment", label: "Raise Payment", icon: Plus });
     tabs.push({ id: "budgets", label: "All Budgets", icon: Target });
     tabs.push({ id: "pos", label: "All POs", icon: FileSignature });
+    tabs.push({ id: "pis", label: "All PIs", icon: FileText });
     if (user.role === "SuperManager") tabs.push({ id: "rd-allocations", label: "R&D Allocations", icon: Coins });
     if (canViewReports) tabs.push({ id: "reports", label: "Reports", icon: TrendingUp });
     if (canViewOrg) {
@@ -153,7 +158,7 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, supplie
     }
   }
 
-  const commonProps = { user, requests, budgets, pos, suppliers, poCounter, saveRequests, saveBudgets, savePOs, saveSuppliers, savePOCounter, addNotifications, showToast };
+  const commonProps = { user, requests, budgets, pos, suppliers, poCounter, piCounter, saveRequests, saveBudgets, savePOs, saveSuppliers, savePOCounter, savePICounter, addNotifications, showToast };
 
   return (
     <div>
@@ -164,9 +169,11 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, supplie
       {view === "new-payment" && <NewPaymentRequestForm {...commonProps} onSuccess={() => { showToast("Payment request submitted", "success"); setView("my-requests"); }} />}
       {view === "new-budget" && <NewBudgetRequestForm {...commonProps} onSuccess={() => { showToast("Budget request submitted", "success"); setView("my-requests"); }} />}
       {view === "new-po" && <NewPORequestForm {...commonProps} onSuccess={() => { showToast("PO request submitted", "success"); setView("my-requests"); }} />}
+      {view === "new-pi" && <NewPIRequestForm {...commonProps} onSuccess={() => { showToast("PI request submitted", "success"); setView("my-requests"); }} />}
       {view === "budgets" && <BudgetView {...commonProps} />}
       {view === "rd-allocations" && <RDAllocationView {...commonProps} />}
       {view === "pos" && <POListView {...commonProps} />}
+      {view === "pis" && <PIListView {...commonProps} />}
       {view === "reports" && <ReportsView {...commonProps} />}
       {view === "overview" && <OrgOverview {...commonProps} />}
       {view === "all" && <RequestList {...commonProps} requests={[...requests, ...budgets.filter(b => b.type !== "RDCap" && b.type !== "RDCapRequest"), ...pos].sort((a, b) => +new Date(b.createdDate || b.approvedDate) - +new Date(a.createdDate || a.approvedDate))} requests_all={requests} budgets_all={budgets} pos_all={pos} emptyMessage="No requests yet." />}

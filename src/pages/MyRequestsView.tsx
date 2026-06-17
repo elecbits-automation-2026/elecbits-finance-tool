@@ -5,7 +5,7 @@ import { RequestList } from "../requests/RequestList";
 import { DrillDownModal } from "../requests/DrillDownModal";
 
 // ============ MY REQUESTS ============
-export function MyRequestsView({ user, requests, budgets, pos, poCounter, saveRequests, saveBudgets, savePOs, savePOCounter, addNotifications, showToast }) {
+export function MyRequestsView({ user, requests, budgets, pos, poCounter, piCounter, saveRequests, saveBudgets, savePOs, savePOCounter, savePICounter, addNotifications, showToast }) {
   // Scoped to the active department (user.dept), so a multi-department user sees only
   // the requests they raised under the current tab. No-op for single-department users.
   const myItems = [...requests, ...budgets, ...pos].filter(r => r.requesterId === user.id && r.dept === user.dept && r.type !== "RDCapRequest").sort((a, b) => +new Date(b.createdDate || b.approvedDate) - +new Date(a.createdDate || a.approvedDate));
@@ -27,7 +27,7 @@ export function MyRequestsView({ user, requests, budgets, pos, poCounter, saveRe
         { label: "Approved/Paid", value: completed.length, color: "emerald", icon: CheckCircle2, onClick: () => handleCardClick(completed, "My Completed") },
         { label: "Rejected", value: rejected.length, color: "red", icon: XCircle, onClick: () => handleCardClick(rejected, "My Rejected") },
       ]} />
-      <RequestList requests={myItems} user={user} requests_all={requests} budgets_all={budgets} pos_all={pos} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} poCounter={poCounter} emptyMessage="You haven't raised any requests yet." showCancelResubmit addNotifications={addNotifications} showToast={showToast} />
+      <RequestList requests={myItems} user={user} requests_all={requests} budgets_all={budgets} pos_all={pos} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} savePICounter={savePICounter} poCounter={poCounter} piCounter={piCounter} emptyMessage="You haven't raised any requests yet." showCancelResubmit addNotifications={addNotifications} showToast={showToast} />
       {drillDown && <DrillDownModal title={drillDown.title} items={drillDown.data} user={user} requests_all={requests} budgets_all={budgets} pos_all={pos} onClose={() => setDrillDown(null)} />}
     </div>
   );

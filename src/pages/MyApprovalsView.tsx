@@ -1,16 +1,21 @@
 import { useState } from "react";
-import { Wallet, FileSignature, PiggyBank, CheckCircle2, XCircle } from "lucide-react";
+import { Wallet, FileSignature, FileText, PiggyBank, CheckCircle2, XCircle } from "lucide-react";
 import { getUserActionsOnRequest } from "../lib/access";
 import { RequestList } from "../requests/RequestList";
 
 // ============ MY APPROVALS ============
-export function MyApprovalsView({ user, requests, budgets, pos, poCounter, saveRequests, saveBudgets, savePOs, savePOCounter, addNotifications, showToast }) {
+export function MyApprovalsView({ user, requests, budgets, pos, poCounter, piCounter, saveRequests, saveBudgets, savePOs, savePOCounter, savePICounter, addNotifications, showToast }) {
   const [typeTab, setTypeTab] = useState("payment");
   const [filter, setFilter] = useState("all");
 
   // Scoped to the active department (user.dept) so each department tab shows only the
-  // approvals made in that department. No-op for single-department users.
-  const allItems = (typeTab === "payment" ? requests : typeTab === "budget" ? budgets : pos).filter(r => r.dept === user.dept);
+  // approvals made in that department. No-op for single-department users. POs and PIs
+  // share the `pos` array, so the PO/PI tabs filter by kind.
+  const sourceList = typeTab === "payment" ? requests
+    : typeTab === "budget" ? budgets
+    : typeTab === "pi" ? pos.filter(r => r.kind === "PI")
+    : pos.filter(r => r.kind !== "PI");
+  const allItems = sourceList.filter(r => r.dept === user.dept);
   const myActionItems = allItems.filter(r => {
     const a = getUserActionsOnRequest(user, r);
     return a.approvals.length > 0 || a.rejections.length > 0;
@@ -31,6 +36,7 @@ export function MyApprovalsView({ user, requests, budgets, pos, poCounter, saveR
       <div className="flex gap-2 mb-4 flex-wrap">
         <button onClick={() => setTypeTab("payment")} className={`px-3 py-2 rounded-lg text-sm font-semibold ${typeTab === "payment" ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-700"}`}><Wallet className="w-4 h-4 inline mr-1" />Payments</button>
         <button onClick={() => setTypeTab("po")} className={`px-3 py-2 rounded-lg text-sm font-semibold ${typeTab === "po" ? "bg-fuchsia-600 text-white" : "bg-white border border-slate-200 text-slate-700"}`}><FileSignature className="w-4 h-4 inline mr-1" />POs</button>
+        <button onClick={() => setTypeTab("pi")} className={`px-3 py-2 rounded-lg text-sm font-semibold ${typeTab === "pi" ? "bg-teal-600 text-white" : "bg-white border border-slate-200 text-slate-700"}`}><FileText className="w-4 h-4 inline mr-1" />PIs</button>
         <button onClick={() => setTypeTab("budget")} className={`px-3 py-2 rounded-lg text-sm font-semibold ${typeTab === "budget" ? "bg-indigo-600 text-white" : "bg-white border border-slate-200 text-slate-700"}`}><PiggyBank className="w-4 h-4 inline mr-1" />Budgets</button>
       </div>
       <div className="flex gap-2 mb-4 flex-wrap">
@@ -45,7 +51,7 @@ export function MyApprovalsView({ user, requests, budgets, pos, poCounter, saveR
           return +new Date(bA?.at || 0) - +new Date(aA?.at || 0);
         })}
         user={user} requests_all={requests} budgets_all={budgets} pos_all={pos}
-        saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} poCounter={poCounter}
+        saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} savePICounter={savePICounter} poCounter={poCounter} piCounter={piCounter}
         emptyMessage={`You haven't ${filter === "all" ? "acted on any" : filter} ${typeTab} requests yet.`}
         addNotifications={addNotifications} showToast={showToast}
       />

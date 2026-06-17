@@ -4,7 +4,7 @@ import { RequestCard } from "./RequestCard";
 import { NewPaymentRequestForm } from "../forms/NewPaymentRequestForm";
 
 // ============ REQUEST LIST ============
-export function RequestList({ requests, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, poCounter, emptyMessage, showActions = false, showCancelResubmit = false, addNotifications, showToast }) {
+export function RequestList({ requests, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, savePICounter, poCounter, piCounter, emptyMessage, showActions = false, showCancelResubmit = false, addNotifications, showToast }) {
   const [expanded, setExpanded] = useState(null);
   const [resubmitTarget, setResubmitTarget] = useState(null);
 
@@ -21,7 +21,7 @@ export function RequestList({ requests, user, requests_all, budgets_all, pos_all
 
   return (
     <div className="space-y-2">
-      {requests.map(r => <RequestCard key={r.id} request={r} user={user} requests_all={requests_all} budgets_all={budgets_all} pos_all={pos_all} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} poCounter={poCounter} expanded={expanded === r.id} setExpanded={setExpanded} showActions={showActions} showCancelResubmit={showCancelResubmit} onResubmit={() => setResubmitTarget(r)} addNotifications={addNotifications} showToast={showToast} />)}
+      {requests.map(r => <RequestCard key={r.id} request={r} user={user} requests_all={requests_all} budgets_all={budgets_all} pos_all={pos_all} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} savePICounter={savePICounter} poCounter={poCounter} piCounter={piCounter} expanded={expanded === r.id} setExpanded={setExpanded} showActions={showActions} showCancelResubmit={showCancelResubmit} onResubmit={() => setResubmitTarget(r)} addNotifications={addNotifications} showToast={showToast} />)}
     </div>
   );
 }

@@ -78,8 +78,8 @@ export function canUserActOnRequest(user, request) {
   // approve it at both the Dept and Finance stages), and a SuperManager acting on
   // their own request via the override path below. Independent review is mandatory.
   if (request.requesterId === user.id) return false;
-  // PO at SuperManagerApproval: only SuperManagers (actual approval stage)
-  if (request.kind === "PO" && request.currentStage === "SuperManagerApproval") {
+  // PO/PI at SuperManagerApproval: only SuperManagers (actual approval stage)
+  if ((request.kind === "PO" || request.kind === "PI") && request.currentStage === "SuperManagerApproval") {
     return user.role === "SuperManager";
   }
   if (user.role === "SuperManager") return true;

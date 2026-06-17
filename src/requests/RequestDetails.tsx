@@ -8,15 +8,25 @@ export function RequestDetails({ request: r, pos_all }) {
   const [viewAttachment, setViewAttachment] = useState(null);
   const isBudget = r.kind === "Budget";
   const isPO = r.kind === "PO";
-  const isPOEdit = isPO && r.type === "POEdit";
-  const originalPO = isPOEdit && pos_all ? pos_all.find(p => p.id === r.editingPOId) : null;
+  const isPI = r.kind === "PI";
+  const isPOorPI = isPO || isPI;
+  // A PI mirrors a PO; the optional inner reference points at a PO (hasPO/poNumber)
+  // rather than a PI (hasPI/piNumber).
+  const refHas = isPI ? r.hasPO : r.hasPI;
+  const refLabel = isPI ? "Purchase Order" : "Proforma Invoice";
+  const refIcon = isPI ? "📄" : "🧾";
+  const refNumber = isPI ? r.poNumber : r.piNumber;
+  const refGstPct = isPI ? r.poGstPct : r.piGstPct;
+  const isDocEdit = (isPO && r.type === "POEdit") || (isPI && r.type === "PIEdit");
+  const editingDocId = isPI ? r.editingPIId : r.editingPOId;
+  const originalDoc = isDocEdit && pos_all ? pos_all.find(p => p.id === editingDocId) : null;
   return (
     <div className="mt-3 pt-3 border-t border-slate-100 space-y-3">
       {viewAttachment && <AttachmentViewer attachment={viewAttachment} onClose={() => setViewAttachment(null)} />}
       <div>
         <div className="text-xs font-bold text-slate-700 mb-2">Details</div>
         <div className="grid sm:grid-cols-2 gap-2 text-xs">
-          {isPO && (
+          {isPOorPI && (
             <>
               <div className="sm:col-span-2"><span className="text-slate-500">Supplier:</span> <strong>{r.supplierName}</strong></div>
               <div className="sm:col-span-2"><span className="text-slate-500">Address:</span> {r.supplierAddress}</div>
@@ -31,12 +41,12 @@ export function RequestDetails({ request: r, pos_all }) {
               <div><span className="text-slate-500">Delivery:</span> {r.deliveryTimeline}</div>
               <div><span className="text-slate-500">Terms:</span> {r.paymentTerms}</div>
               <div className="sm:col-span-2"><span className="text-slate-500">Scope:</span> <span className="whitespace-pre-wrap">{r.scope}</span></div>
-              {r.hasPI && (
+              {refHas && (
                 <div className="sm:col-span-2 bg-teal-50 rounded p-2 border border-teal-200">
-                  <div className="text-xs font-bold text-teal-900 mb-1">🧾 Proforma Invoice{r.piNumber ? ` · ${r.piNumber}` : ""}</div>
+                  <div className="text-xs font-bold text-teal-900 mb-1">{refIcon} {refLabel}{refNumber ? ` · ${refNumber}` : ""}</div>
                   <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
                     <span>Subtotal: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.subtotal || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
-                    <span>GST{r.piGstPct != null ? ` (${r.piGstPct}%)` : ""}: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.totalGST || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                    <span>GST{refGstPct != null ? ` (${refGstPct}%)` : ""}: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.totalGST || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
                     <span className="text-teal-900">Grand Total: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
                   </div>
                 </div>
@@ -68,13 +78,13 @@ export function RequestDetails({ request: r, pos_all }) {
               {r.reason && <div className="sm:col-span-2"><span className="text-slate-500">Cancellation Reason:</span> {r.reason}</div>}
             </>
           )}
-          {!isPO && r.description && !isBudget && <div className="sm:col-span-2"><span className="text-slate-500">Description:</span> {r.description}</div>}
-          {!isPO && r.scope && <div className="sm:col-span-2"><span className="text-slate-500">Scope:</span> {r.scope}</div>}
+          {!isPOorPI && r.description && !isBudget && <div className="sm:col-span-2"><span className="text-slate-500">Description:</span> {r.description}</div>}
+          {!isPOorPI && r.scope && <div className="sm:col-span-2"><span className="text-slate-500">Scope:</span> {r.scope}</div>}
           {r.justification && <div className="sm:col-span-2"><span className="text-slate-500">Justification:</span> {r.justification}</div>}
           {r.expectedOutcome && <div className="sm:col-span-2"><span className="text-slate-500">Expected:</span> {r.expectedOutcome}</div>}
           {r.rdType && <div><span className="text-slate-500">R&D Type:</span> {r.rdType}</div>}
-          {!isPO && r.reason && <div className="sm:col-span-2"><span className="text-slate-500">Reason:</span> {r.reason}</div>}
-          {!isBudget && !isPO && r.purpose && <div className="sm:col-span-2"><span className="text-slate-500">Purpose:</span> {r.purpose}</div>}
+          {!isPOorPI && r.reason && <div className="sm:col-span-2"><span className="text-slate-500">Reason:</span> {r.reason}</div>}
+          {!isBudget && !isPOorPI && r.purpose && <div className="sm:col-span-2"><span className="text-slate-500">Purpose:</span> {r.purpose}</div>}
           {r.linkedPONumber && <div className="sm:col-span-2 bg-fuchsia-50 p-2 rounded border border-fuchsia-200"><span className="text-fuchsia-900 font-semibold">Linked PO:</span> <span className="font-mono">{r.linkedPONumber}</span></div>}
           {r.clientOrderValue > 0 && <div><span className="text-slate-500">Client Order:</span> ₹{(r.clientOrderValue / 100000).toFixed(2)}L</div>}
           {r.startDate && <div><span className="text-slate-500">Start:</span> {r.startDate}</div>}
@@ -109,12 +119,12 @@ export function RequestDetails({ request: r, pos_all }) {
           {r.selectedApprovers && r.selectedApprovers.length > 0 && <div className="sm:col-span-2"><span className="text-slate-500">Approvers:</span> {r.selectedApprovers.map(id => getRoster().find(u => u.id === id)?.name).filter(Boolean).join(" + ")}</div>}
         </div>
       </div>
-      {isPOEdit && originalPO && (
+      {isDocEdit && originalDoc && (
         <div>
           <div className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1"><Edit3 className="w-3 h-3" />Changes (Old vs New)</div>
           <div className="bg-slate-50 rounded-lg p-2 text-xs">
             <div className="grid grid-cols-3 gap-1 font-semibold text-slate-600 pb-1 border-b border-slate-200">
-              <div>Field</div><div>Current (v{originalPO.version || 1})</div><div>Proposed</div>
+              <div>Field</div><div>Current (v{originalDoc.version || 1})</div><div>Proposed</div>
             </div>
             {(() => {
               const fields = [
@@ -130,7 +140,7 @@ export function RequestDetails({ request: r, pos_all }) {
                 { key: "paymentTerms", label: "Terms" },
               ];
               return fields.map(f => {
-                const oldVal = originalPO[f.key] ?? "—";
+                const oldVal = originalDoc[f.key] ?? "—";
                 const newVal = r[f.key] ?? "—";
                 const changed = String(oldVal) !== String(newVal);
                 const fmt = f.format || (v => v);
@@ -150,12 +160,12 @@ export function RequestDetails({ request: r, pos_all }) {
             <div className="text-xs font-bold text-slate-700 mb-1">Line Items Comparison</div>
             <div className="grid md:grid-cols-2 gap-2">
               <div className="bg-slate-50 rounded p-2">
-                <div className="text-xs font-semibold text-slate-600 mb-1">Current ({(originalPO.lineItems || []).length} lines)</div>
-                {(originalPO.lineItems || []).length === 0 ? <div className="text-xs text-slate-400 italic">No line items</div> : (
+                <div className="text-xs font-semibold text-slate-600 mb-1">Current ({(originalDoc.lineItems || []).length} lines)</div>
+                {(originalDoc.lineItems || []).length === 0 ? <div className="text-xs text-slate-400 italic">No line items</div> : (
                   <table className="w-full text-xs">
                     <thead><tr className="text-left text-slate-500"><th>Item</th><th className="text-right">Qty</th><th className="text-right">Cost</th><th className="text-right">GST</th></tr></thead>
                     <tbody>
-                      {originalPO.lineItems.map((li, i) => <tr key={i} className="border-t border-slate-200"><td className="py-0.5">{li.description}</td><td className="text-right">{li.qty} {li.unit}</td><td className="text-right">{parseFloat(li.unitCost).toLocaleString("en-IN")}</td><td className="text-right">{li.gstPct}%</td></tr>)}
+                      {originalDoc.lineItems.map((li, i) => <tr key={i} className="border-t border-slate-200"><td className="py-0.5">{li.description}</td><td className="text-right">{li.qty} {li.unit}</td><td className="text-right">{parseFloat(li.unitCost).toLocaleString("en-IN")}</td><td className="text-right">{li.gstPct}%</td></tr>)}
                     </tbody>
                   </table>
                 )}

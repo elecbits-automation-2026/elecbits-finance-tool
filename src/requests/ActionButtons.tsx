@@ -2,10 +2,10 @@ import { useState } from "react";
 import { CheckCircle2, XCircle, AlertTriangle, Send, Upload, X, Undo2, CheckSquare, FileSignature, Paperclip } from "lucide-react";
 import { getStageLabel, computeNextStage, getDeptHeadsForDept } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
-import { formatPONumber } from "../lib/finance";
+import { formatPONumber, formatPINumber } from "../lib/finance";
 
 // ============ ACTION BUTTONS ============
-export function ActionButtons({ request, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, poCounter, addNotifications, showToast }) {
+export function ActionButtons({ request, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, savePICounter, poCounter, piCounter, addNotifications, showToast }) {
   const [mode, setMode] = useState(null);
   const [comments, setComments] = useState("");
   const [busy, setBusy] = useState(false);
@@ -15,10 +15,27 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
 
   const isBudget = request.kind === "Budget";
   const isPO = request.kind === "PO";
-  const reqKind = isBudget ? "Budget" : isPO ? "PO" : "Payment";
+  const isPI = request.kind === "PI";
+  // A PI flows through the exact same pipeline as a PO; these aliases let the shared
+  // logic below stay kind-agnostic while still using the right counter, number format,
+  // field names and labels for each document type.
+  const isPOorPI = isPO || isPI;
+  const reqKind = isBudget ? "Budget" : isPO ? "PO" : isPI ? "PI" : "Payment";
+  const docLabel = isPI ? "PI" : "PO";
+  const docCounter = isPI ? piCounter : poCounter;
+  const saveDocCounter = isPI ? savePICounter : savePOCounter;
+  const formatDocNumber = isPI ? formatPINumber : formatPONumber;
+  const docNumberField = isPI ? "piNumber" : "poNumber";
+  const isDocEdit = request.type === "POEdit" || request.type === "PIEdit";
+  const isDocCancel = request.type === "POCancel" || request.type === "PICancel";
+  const editingDocId = isPI ? request.editingPIId : request.editingPOId;
+  const editingDocNumber = isPI ? request.editingPINumber : request.editingPONumber;
+  const cancellingDocId = isPI ? request.cancellingPIId : request.cancellingPOId;
+  const cancellingDocNumber = isPI ? request.cancellingPINumber : request.cancellingPONumber;
+  const docNumberOf = (doc) => (isPI ? doc.piNumber : doc.poNumber);
 
   const isSuperManager = user.role === "SuperManager";
-  const isPOAtSuperStage = isPO && request.currentStage === "SuperManagerApproval";
+  const isPOAtSuperStage = isPOorPI && request.currentStage === "SuperManagerApproval";
   // FinanceHead is a MID-chain stage now (Finance reviews first, before VP/CEO), so the
   // SuperManager fast-track below must fire there too — the budgets_guard trigger expects
   // ANY SuperManager approval to jump straight to Active. Only the terminal processing
@@ -66,7 +83,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
       if (isSuperManager && isEarlyStage && !isPOAtSuperStage) {
         actionLabel = `Approved by ${user.name}`;
         if (isBudget) { newStage = "Active"; newStatus = "Active"; }
-        else if (isPO) { newStage = "Accountant"; newStatus = getStageLabel("Accountant", "PO"); }
+        else if (isPOorPI) { newStage = "Accountant"; newStatus = getStageLabel("Accountant", reqKind); }
         else { newStage = "Accountant"; newStatus = getStageLabel("Accountant", "Payment"); }
       } else {
         const stageName = {
@@ -76,14 +93,14 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
           "CEO": "Approved by CEO",
           "SuperManagerApproval": `Approved by ${user.name}`,
           "FinanceHead": "Approved by Finance Head",
-          "Accountant": isPO ? (request.type === "POEdit" ? "Edit Applied" : request.type === "POCancel" ? "Cancellation Applied" : "PO Number Assigned") : "Processing",
+          "Accountant": isPOorPI ? (isDocEdit ? "Edit Applied" : isDocCancel ? "Cancellation Applied" : `${docLabel} Number Assigned`) : "Processing",
         }[request.currentStage] || "Approved";
         actionLabel = stageName;
 
-        // PO Accountant stage — special handling for create/edit/cancel
-        if (isPO && request.currentStage === "Accountant") {
-          if (request.type === "POEdit") {
-            const originalPO = pos_all.find(p => p.id === request.editingPOId);
+        // PO/PI Accountant stage — special handling for create/edit/cancel
+        if (isPOorPI && request.currentStage === "Accountant") {
+          if (isDocEdit) {
+            const originalPO = pos_all.find(p => p.id === editingDocId);
             if (originalPO) {
               const newVersion = (originalPO.version || 1) + 1;
               const updatedPO = {
@@ -104,16 +121,16 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
 
               // Notify requester + dept heads
               if (addNotifications) {
-                const notifs = [{ id: "N-" + Date.now() + "-poe", toUserId: request.requesterId, title: "PO Edit Applied", message: `Your edit request for ${originalPO.poNumber} is approved. Now at v${newVersion}.`, at: now, read: false, requestId: request.id }];
-                getDeptHeadsForDept(request.dept, request.isProject).forEach((dh, idx) => { if (dh.id !== request.requesterId && dh.id !== user.id) notifs.push({ id: "N-" + Date.now() + "-pod-" + idx, toUserId: dh.id, title: "PO Updated", message: `${originalPO.poNumber} updated to v${newVersion} by ${user.name}.`, at: now, read: false, requestId: request.id }); });
+                const notifs = [{ id: "N-" + Date.now() + "-poe", toUserId: request.requesterId, title: `${docLabel} Edit Applied`, message: `Your edit request for ${docNumberOf(originalPO)} is approved. Now at v${newVersion}.`, at: now, read: false, requestId: request.id }];
+                getDeptHeadsForDept(request.dept, request.isProject).forEach((dh, idx) => { if (dh.id !== request.requesterId && dh.id !== user.id) notifs.push({ id: "N-" + Date.now() + "-pod-" + idx, toUserId: dh.id, title: `${docLabel} Updated`, message: `${docNumberOf(originalPO)} updated to v${newVersion} by ${user.name}.`, at: now, read: false, requestId: request.id }); });
                 await addNotifications(notifs);
               }
 
-              if (showToast) showToast(`PO ${originalPO.poNumber} updated to v${newVersion}`, "success");
+              if (showToast) showToast(`${docLabel} ${docNumberOf(originalPO)} updated to v${newVersion}`, "success");
               setBusy(false); resetPOAssignForm(); return;
             }
-          } else if (request.type === "POCancel") {
-            const originalPO = pos_all.find(p => p.id === request.cancellingPOId);
+          } else if (isDocCancel) {
+            const originalPO = pos_all.find(p => p.id === cancellingDocId);
             if (originalPO) {
               const cancelledPO = { ...originalPO, status: "Cancelled", currentStage: "Cancelled", cancelledAt: now, cancelReason: request.reason, history: [...(originalPO.history || []), { action: "Cancelled", by: user.name, byId: user.id, at: now, comments: `Cancellation ${request.id} applied: ${request.reason}` }] };
               const cancelApproved = { ...request, currentStage: "Approved", status: "Approved", approvedBy: `${user.name}`, approvedDate: now, history: [...request.history, { action: "Cancellation Applied", by: user.name, byId: user.id, at: now, comments: comments.trim() }] };
@@ -121,33 +138,33 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
               await savePOs([cancelApproved, cancelledPO, ...otherPOs]);
 
               if (addNotifications) {
-                const notifs = [{ id: "N-" + Date.now() + "-poc", toUserId: request.requesterId, title: "PO Cancelled", message: `${originalPO.poNumber} (${originalPO.supplierName}) has been cancelled.`, at: now, read: false, requestId: request.id }];
-                if (originalPO.requesterId !== request.requesterId) notifs.push({ id: "N-" + Date.now() + "-poco", toUserId: originalPO.requesterId, title: "Your PO was Cancelled", message: `${originalPO.poNumber} cancelled. Reason: ${request.reason}`, at: now, read: false, requestId: request.id });
-                getDeptHeadsForDept(originalPO.dept, originalPO.isProject).forEach((dh, idx) => { if (dh.id !== user.id && dh.id !== request.requesterId) notifs.push({ id: "N-" + Date.now() + "-pocd-" + idx, toUserId: dh.id, title: "PO Cancelled", message: `${originalPO.poNumber} cancelled.`, at: now, read: false, requestId: request.id }); });
+                const notifs = [{ id: "N-" + Date.now() + "-poc", toUserId: request.requesterId, title: `${docLabel} Cancelled`, message: `${docNumberOf(originalPO)} (${originalPO.supplierName}) has been cancelled.`, at: now, read: false, requestId: request.id }];
+                if (originalPO.requesterId !== request.requesterId) notifs.push({ id: "N-" + Date.now() + "-poco", toUserId: originalPO.requesterId, title: `Your ${docLabel} was Cancelled`, message: `${docNumberOf(originalPO)} cancelled. Reason: ${request.reason}`, at: now, read: false, requestId: request.id });
+                getDeptHeadsForDept(originalPO.dept, originalPO.isProject).forEach((dh, idx) => { if (dh.id !== user.id && dh.id !== request.requesterId) notifs.push({ id: "N-" + Date.now() + "-pocd-" + idx, toUserId: dh.id, title: `${docLabel} Cancelled`, message: `${docNumberOf(originalPO)} cancelled.`, at: now, read: false, requestId: request.id }); });
                 await addNotifications(notifs);
               }
 
-              if (showToast) showToast(`PO ${originalPO.poNumber} cancelled`, "warning");
+              if (showToast) showToast(`${docLabel} ${docNumberOf(originalPO)} cancelled`, "warning");
               setBusy(false); resetPOAssignForm(); return;
             }
           } else {
-            // POCreate: assign PO number + optional PO document
-            const newCounter = poCounter + 1;
-            const assignedNumber = poNumberInput.trim() || formatPONumber(newCounter);
-            await savePOCounter(newCounter);
+            // POCreate/PICreate: assign document number + optional document
+            const newCounter = docCounter + 1;
+            const assignedNumber = poNumberInput.trim() || formatDocNumber(newCounter);
+            await saveDocCounter(newCounter);
             extraUpdates = {
-              poNumber: assignedNumber,
+              [docNumberField]: assignedNumber,
               approvedBy: `${user.name} (${user.designation})`,
               approvedDate: now,
-              // Attach the signed/stamped PO document if the accountant uploaded one
+              // Attach the signed/stamped document if the accountant uploaded one
               ...(poAttachment ? { poDocument: poAttachment } : {}),
             };
             newStage = "Approved"; newStatus = "Approved";
-            actionLabel = `PO Number Assigned: ${assignedNumber}`;
+            actionLabel = `${docLabel} Number Assigned: ${assignedNumber}`;
           }
-        } else if (isPO && request.type === "POCancel" && request.currentStage === "FinanceHead") {
+        } else if (isPOorPI && isDocCancel && request.currentStage === "FinanceHead") {
           // Finance Head approves cancel directly (no Accountant step needed for cancel)
-          const originalPO = pos_all.find(p => p.id === request.cancellingPOId);
+          const originalPO = pos_all.find(p => p.id === cancellingDocId);
           if (originalPO) {
             const cancelledPO = { ...originalPO, status: "Cancelled", currentStage: "Cancelled", cancelledAt: now, cancelReason: request.reason, history: [...(originalPO.history || []), { action: "Cancelled", by: user.name, byId: user.id, at: now, comments: `Cancellation ${request.id} approved: ${request.reason}` }] };
             const cancelApproved = { ...request, currentStage: "Approved", status: "Approved", approvedBy: `${user.name}`, approvedDate: now, history: [...request.history, { action: "Cancellation Approved", by: user.name, byId: user.id, at: now, comments: comments.trim() }] };
@@ -155,12 +172,12 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
             await savePOs([cancelApproved, cancelledPO, ...otherPOs]);
 
             if (addNotifications) {
-              const notifs = [{ id: "N-" + Date.now() + "-poc", toUserId: request.requesterId, title: "PO Cancelled", message: `${originalPO.poNumber} (${originalPO.supplierName}) has been cancelled.`, at: now, read: false, requestId: request.id }];
-              if (originalPO.requesterId !== request.requesterId) notifs.push({ id: "N-" + Date.now() + "-poco", toUserId: originalPO.requesterId, title: "Your PO was Cancelled", message: `${originalPO.poNumber} cancelled. Reason: ${request.reason}`, at: now, read: false, requestId: request.id });
+              const notifs = [{ id: "N-" + Date.now() + "-poc", toUserId: request.requesterId, title: `${docLabel} Cancelled`, message: `${docNumberOf(originalPO)} (${originalPO.supplierName}) has been cancelled.`, at: now, read: false, requestId: request.id }];
+              if (originalPO.requesterId !== request.requesterId) notifs.push({ id: "N-" + Date.now() + "-poco", toUserId: originalPO.requesterId, title: `Your ${docLabel} was Cancelled`, message: `${docNumberOf(originalPO)} cancelled. Reason: ${request.reason}`, at: now, read: false, requestId: request.id });
               await addNotifications(notifs);
             }
 
-            if (showToast) showToast(`PO ${originalPO.poNumber} cancelled`, "warning");
+            if (showToast) showToast(`${docLabel} ${docNumberOf(originalPO)} cancelled`, "warning");
             setBusy(false); resetPOAssignForm(); return;
           }
         } else if (request.currentStage === "DeptApproval" && request.selectedApprovers && request.selectedApprovers.length > 1) {
@@ -209,12 +226,12 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
         history: [...item.history, { action: actionLabel, by: user.name, byId: user.id, at: now, comments: comments.trim() || paymentNote || (actionType === "approve" ? "Approved" : "") }]
       };
       if (isBudget && newStage === "Active" && !item.approvedBy) { updates.approvedBy = `${user.name} (${user.designation})`; updates.approvedDate = now; }
-      if (isPO && newStage === "Approved" && !item.approvedDate) { updates.approvedBy = `${user.name} (${user.designation})`; updates.approvedDate = now; }
+      if (isPOorPI && newStage === "Approved" && !item.approvedDate) { updates.approvedBy = `${user.name} (${user.designation})`; updates.approvedDate = now; }
       return updates;
     };
 
     if (isBudget) await saveBudgets(budgets_all.map(updateFn));
-    else if (isPO) await savePOs(pos_all.map(updateFn));
+    else if (isPOorPI) await savePOs(pos_all.map(updateFn));
     else {
       const updatedRequests = requests_all.map(updateFn);
       await saveRequests(updatedRequests);
@@ -251,11 +268,12 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
       if (showToast) showToast("Payment paid. Notifications sent.", "success");
     }
 
-    // Notify on PO Create approval (when PO number is assigned)
-    if (actionType === "approve" && isPO && request.type === "POCreate" && newStage === "Approved" && addNotifications) {
-      const assignedNum = extraUpdates.poNumber || request.poNumber;
-      const notifs = [{ id: "N-" + Date.now() + "-poa", toUserId: request.requesterId, title: "PO Approved", message: `Your PO request is approved with number ${assignedNum}. You can now raise payments against it.`, at: now, read: false, requestId: request.id }];
-      getDeptHeadsForDept(request.dept, request.isProject).forEach((dh, idx) => { if (dh.id !== request.requesterId && dh.id !== user.id) notifs.push({ id: "N-" + Date.now() + "-poad-" + idx, toUserId: dh.id, title: "PO Approved in Your Dept", message: `${assignedNum} (${request.supplierName}) approved for ₹${(request.amountINR / 100000).toFixed(2)}L.`, at: now, read: false, requestId: request.id }); });
+    // Notify on PO/PI Create approval (when the document number is assigned)
+    if (actionType === "approve" && isPOorPI && (request.type === "POCreate" || request.type === "PICreate") && newStage === "Approved" && addNotifications) {
+      const assignedNum = extraUpdates[docNumberField] || docNumberOf(request);
+      const payLine = isPI ? "" : " You can now raise payments against it.";
+      const notifs = [{ id: "N-" + Date.now() + "-poa", toUserId: request.requesterId, title: `${docLabel} Approved`, message: `Your ${docLabel} request is approved with number ${assignedNum}.${payLine}`, at: now, read: false, requestId: request.id }];
+      getDeptHeadsForDept(request.dept, request.isProject).forEach((dh, idx) => { if (dh.id !== request.requesterId && dh.id !== user.id) notifs.push({ id: "N-" + Date.now() + "-poad-" + idx, toUserId: dh.id, title: `${docLabel} Approved in Your Dept`, message: `${assignedNum} (${request.supplierName}) approved for ₹${(request.amountINR / 100000).toFixed(2)}L.`, at: now, read: false, requestId: request.id }); });
       await addNotifications(notifs);
     }
 
@@ -269,10 +287,10 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
 
   const stage = request.currentStage;
   const isApprovalStage = ["BoxBuildMid", "DeptApproval", "VP", "CEO", "SuperManagerApproval", "FinanceHead"].includes(stage);
-  const isPOAccountant = isPO && stage === "Accountant";
-  const isProcessStage = stage === "Accountant" && !isBudget && !isPO;
-  const isPayStage = stage === "Processing" && !isBudget && !isPO;
-  const canSuperMarkPaid = isSuperManager && !isBudget && !isPO && (stage === "Accountant" || stage === "Processing");
+  const isPOAccountant = isPOorPI && stage === "Accountant";
+  const isProcessStage = stage === "Accountant" && !isBudget && !isPOorPI;
+  const isPayStage = stage === "Processing" && !isBudget && !isPOorPI;
+  const canSuperMarkPaid = isSuperManager && !isBudget && !isPOorPI && (stage === "Accountant" || stage === "Processing");
   const canUndoPaid = stage === "Paid" && request.paidAt && user.role === "Accountant" && (Date.now() - new Date(request.paidAt).getTime() < 24 * 60 * 60 * 1000);
 
   return (
@@ -287,7 +305,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
           )}
           {isPOAccountant && (
             <>
-              <button onClick={() => setMode("po-assign")} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><FileSignature className="w-3.5 h-3.5" />{request.type === "POEdit" ? "Apply Edit" : request.type === "POCancel" ? "Apply Cancel" : "Assign PO Number"}</button>
+              <button onClick={() => setMode("po-assign")} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><FileSignature className="w-3.5 h-3.5" />{isDocEdit ? "Apply Edit" : isDocCancel ? "Apply Cancel" : `Assign ${docLabel} Number`}</button>
               <button onClick={() => setMode("reject")} className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><XCircle className="w-3.5 h-3.5" />Reject</button>
             </>
           )}
@@ -321,28 +339,28 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
         <div className="space-y-3 bg-fuchsia-50 p-4 rounded-lg border border-fuchsia-200">
           <div className="text-sm font-semibold text-fuchsia-900 flex items-center gap-1.5">
             <FileSignature className="w-4 h-4" />
-            {request.type === "POEdit" ? `Apply Edit to ${request.editingPONumber}` : request.type === "POCancel" ? `Cancel ${request.cancellingPONumber}` : "Assign PO Number & Attach Document"}
+            {isDocEdit ? `Apply Edit to ${editingDocNumber}` : isDocCancel ? `Cancel ${cancellingDocNumber}` : `Assign ${docLabel} Number & Attach Document`}
           </div>
 
-          {/* PO number field — only for POCreate */}
-          {request.type !== "POEdit" && request.type !== "POCancel" && (
+          {/* Document number field — only for create */}
+          {!isDocEdit && !isDocCancel && (
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">PO Number</label>
-              <input value={poNumberInput} onChange={(e) => setPONumberInput(e.target.value)} placeholder={`Auto: ${formatPONumber(poCounter + 1)}`} className="w-full text-xs px-2 py-1.5 border border-fuchsia-300 rounded-lg font-mono" />
-              <p className="text-xs text-slate-500 mt-1">Leave blank to auto-assign {formatPONumber(poCounter + 1)}, or type a custom number.</p>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">{docLabel} Number</label>
+              <input value={poNumberInput} onChange={(e) => setPONumberInput(e.target.value)} placeholder={`Auto: ${formatDocNumber(docCounter + 1)}`} className="w-full text-xs px-2 py-1.5 border border-fuchsia-300 rounded-lg font-mono" />
+              <p className="text-xs text-slate-500 mt-1">Leave blank to auto-assign {formatDocNumber(docCounter + 1)}, or type a custom number.</p>
             </div>
           )}
 
-          {/* PO document upload — for POCreate only (edit/cancel don't issue a new PO doc) */}
-          {request.type !== "POEdit" && request.type !== "POCancel" && (
+          {/* Document upload — for create only (edit/cancel don't issue a new document) */}
+          {!isDocEdit && !isDocCancel && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                PO Document <span className="font-normal text-slate-500">(signed / stamped — optional but recommended)</span>
+                {docLabel} Document <span className="font-normal text-slate-500">(signed / stamped — optional but recommended)</span>
               </label>
               {!poAttachment ? (
                 <label className="flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-fuchsia-300 rounded-lg cursor-pointer hover:border-fuchsia-500 hover:bg-fuchsia-100/50 text-xs text-slate-600 transition">
                   <Upload className="w-4 h-4 text-fuchsia-500" />
-                  <span>Upload signed PO document <span className="text-slate-400">(PDF, PNG, JPG — max 2 MB)</span></span>
+                  <span>Upload signed {docLabel} document <span className="text-slate-400">(PDF, PNG, JPG — max 2 MB)</span></span>
                   <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={handlePOAttachmentUpload} />
                 </label>
               ) : (
@@ -368,7 +386,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
           </div>
           <div className="flex gap-2">
             <button onClick={() => doAction("approve")} disabled={busy} className="bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-400 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
-              {request.type === "POEdit" ? "Apply Edit" : request.type === "POCancel" ? "Confirm Cancellation" : "Assign & Approve"}
+              {isDocEdit ? "Apply Edit" : isDocCancel ? "Confirm Cancellation" : "Assign & Approve"}
             </button>
             <button onClick={resetPOAssignForm} className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg">Cancel</button>
           </div>
