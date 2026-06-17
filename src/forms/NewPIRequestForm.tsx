@@ -1,25 +1,26 @@
 import { useState } from "react";
-import { Edit3, FileSignature, Briefcase, Target, AlertTriangle, Plus, X, CheckCircle2, FileText, PencilLine } from "lucide-react";
-import { CURRENCIES, EXPENSE_TYPES, NON_PROJECT_DEPTS, GSTIN_REGEX, GST_RATES, UNIT_OPTIONS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { Edit3, FileSignature, Briefcase, AlertTriangle, Plus, X, CheckCircle2, FileText } from "lucide-react";
+import { CURRENCIES, GSTIN_REGEX, GST_RATES, UNIT_OPTIONS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
 import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
-import { computeLineItemTotals, getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage } from "../lib/finance";
+import { computeLineItemTotals, getActiveBudgetForProject } from "../lib/finance";
 import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
 
 // ============ NEW PI REQUEST FORM ============
-// Mirrors NewPORequestForm exactly, but raises a Proforma Invoice (PI) instead of a
-// Purchase Order. Where the PO form optionally references a PI, this form optionally
-// references a PO. A PI's own number lives in `piNumber` (assigned by the Accountant);
-// the optional referenced PO lives in `hasPO`/`poNumber`/`poSubtotal`/`poGstPct`.
-export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [], savePOs, saveSuppliers, onSuccess, editFor = null }) {
+// Raises a Proforma Invoice (PI). A PI is issued to a CLIENT (not a supplier) and is
+// always tied to a project. Where the PO form optionally references a PI, this form
+// optionally references a PO. A PI's own number lives in `piNumber` (assigned by the
+// Accountant); the optional referenced PO lives in `hasPO`/`poNumber`/`poSubtotal`/`poGstPct`.
+// NOTE: the client is stored in the supplier* fields so the shared PO/PI pipeline keeps
+// working — only the UI is relabelled "Client". No supplier-master integration here.
+export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSuccess, editFor = null }) {
   const isEdit = !!editFor;
   const [form, setForm] = useState<any>(isEdit ? {
     piNumber: "",
-    isProject: editFor.isProject,
+    isProject: true,
     projectId: editFor.projectId || "",
     category: editFor.category || "",
-    supplierId: "",
     supplierName: editFor.supplierName,
     supplierAddress: editFor.supplierAddress,
     supplierGST: editFor.supplierGST || "",
@@ -41,9 +42,8 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
     changeNote: "",
     verified: false,
   } : {
-    isProject: !NON_PROJECT_DEPTS.includes(user.dept),
+    isProject: true,
     projectId: "", category: "",
-    supplierId: "",
     supplierName: "", supplierAddress: "", supplierGST: "",
     isInternational: false, supplierCountry: "", supplierTaxId: "",
     hasPO: false, poNumber: "", poSubtotal: "", poGstPct: 18,
@@ -56,13 +56,6 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Track whether the user has edited any autofilled supplier fields.
-  // When true, the form treats the entry as a new supplier even if supplierId is set.
-  const [supplierEdited, setSupplierEdited] = useState(false);
-
-  // A supplier is "from the master" if one was selected and not subsequently edited.
-  const supplierFromMaster = !!form.supplierId && !supplierEdited;
-
   // Totals come from the PO figures when a Purchase Order is provided,
   // otherwise from the line-items table. The two paths are mutually exclusive.
   const poSubtotalNum = parseFloat(form.poSubtotal || 0);
@@ -72,43 +65,11 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
   const lineTotals = computeLineItemTotals(form.lineItems);
   const totals = form.hasPO ? poTotals : lineTotals;
   const grandTotalINR = form.currency === "INR" ? totals.grandTotal : totals.grandTotal * parseFloat(form.fxRate || 0);
-  const subtotalINR = form.currency === "INR" ? totals.subtotal : totals.subtotal * parseFloat(form.fxRate || 0);
-  const gstINR = form.currency === "INR" ? totals.totalGST : totals.totalGST * parseFloat(form.fxRate || 0);
 
   const activeBudgets = budgets.filter(b => b.type === "Project" && (b.status === "Active" || b.currentStage === "Active"));
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const monthlyBudget = (!form.isProject && form.category && !isEdit) ? getActiveMonthlyBudget(budgets, user.dept, form.category, currentMonth) : null;
-  const monthlyUsage = monthlyBudget ? getMonthlyBudgetUsage(requests, user.dept, form.category, currentMonth) : null;
-  const monthlyAvailable = monthlyBudget ? Math.max(0, monthlyBudget.amountINR - monthlyUsage.total) : 0;
-  const eligibleApprovers = getEligibleDeptApprovers(user, { requiresProject: form.isProject, category: form.isProject ? "Project" : "Non-Project" }, form.isProject);
+  const eligibleApprovers = getEligibleDeptApprovers(user, { requiresProject: true, category: "Project" }, true);
   const needsMid = needsBoxBuildMidApproval(user);
-  const canRaiseProjectPI = !NON_PROJECT_DEPTS.includes(user.dept);
-
-  // Pick a supplier from the master: autofill name/address/GSTIN.
-  // Fields remain editable — if the user changes anything, supplierEdited flips
-  // to true and the entry is saved as a new supplier on submit.
-  function selectSupplier(id) {
-    setSupplierEdited(false);
-    if (!id) { setForm({ ...form, supplierId: "" }); return; }
-    const s = suppliers.find(x => x.id === id);
-    if (!s) { setForm({ ...form, supplierId: "" }); return; }
-    setForm({
-      ...form, supplierId: id,
-      supplierName: s.name || "",
-      supplierAddress: s.address || "",
-      supplierGST: s.gstin || "",
-      isInternational: !!s.isInternational,
-      supplierCountry: s.country || "",
-      supplierTaxId: s.taxId || "",
-    });
-  }
-
-  // Helper: update a supplier field and mark it as edited (so it saves as new).
-  function updateSupplierField(field: string, value: any) {
-    if (form.supplierId) setSupplierEdited(true);
-    setForm({ ...form, [field]: value });
-  }
 
   function addLineItem() {
     const newId = "L" + (form.lineItems.length + 1) + "-" + Date.now().toString(36);
@@ -135,17 +96,16 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
     setErr("");
     if (isReadOnly(user)) return setErr("Your account is read-only and cannot raise requests.");
     if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
-    if (form.isProject && !form.projectId) return setErr("Select project");
-    if (!form.isProject && !form.category) return setErr("Select category");
-    if (!form.supplierName.trim()) return setErr("Supplier name required");
-    if (!form.supplierAddress.trim()) return setErr("Supplier address required");
+    if (!isEdit && !form.projectId) return setErr("Select project");
+    if (!form.supplierName.trim()) return setErr("Client name required");
+    if (!form.supplierAddress.trim()) return setErr("Client address required");
 
     // GSTIN validation
     if (!form.isInternational) {
-      if (!form.supplierGST.trim()) return setErr("GSTIN required for Indian suppliers (or check 'International supplier' if not applicable)");
+      if (!form.supplierGST.trim()) return setErr("GSTIN required for Indian clients (or check 'International client' if not applicable)");
       if (!GSTIN_REGEX.test(form.supplierGST.trim().toUpperCase())) return setErr("Invalid GSTIN format. Expected 15 chars like 09AABCA1234A1ZP");
     } else {
-      if (!form.supplierCountry.trim()) return setErr("Country required for international supplier");
+      if (!form.supplierCountry.trim()) return setErr("Country required for international client");
     }
 
     // Amount source: PO figures OR line items (mutually exclusive).
@@ -176,7 +136,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
       if (!form.editReason.trim()) return setErr("Reason for edit required");
       if (!form.changeNote.trim()) return setErr("What's changing — required");
 
-      if (form.isProject && form.projectId && grandTotalINR > editFor.amountINR) {
+      if (form.projectId && grandTotalINR > editFor.amountINR) {
         const budget = getActiveBudgetForProject(budgets, form.projectId);
         if (budget) {
           const otherProjectPIs = pos.filter(p => p.type === "PICreate" && p.projectId === form.projectId && p.id !== editFor.id && (p.status === "Approved" || p.currentStage === "Approved" || p.status === "Closed"));
@@ -194,49 +154,18 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
       }
     }
 
-    if (form.isProject && !isEdit) {
+    if (!isEdit) {
       const budget = getActiveBudgetForProject(budgets, form.projectId);
       if (!budget) return setErr("Selected project has no active budget.");
     }
-    if (!form.isProject && !isEdit) {
-      if (!monthlyBudget) return setErr(`No active Monthly Budget for ${user.dept} → ${form.category} for ${currentMonth}. Ask your Dept Head to raise one before raising this PI.`);
-    }
-    if (!form.attachment && !isEdit) return setErr(form.hasPO ? "Purchase Order (PO) document mandatory" : "Vendor quote mandatory");
+    if (!form.attachment && !isEdit) return setErr(form.hasPO ? "Purchase Order (PO) document mandatory" : "Client quote / document mandatory");
 
     setSubmitting(true);
     const now = new Date().toISOString();
     const selectedApproverIds = eligibleApprovers.map(a => a.id);
 
-    // Save to the supplier master when:
-    //   a) no supplier was selected (brand new), OR
-    //   b) a supplier was selected but the user edited the details (save as new entry)
-    // Never overwrite an existing master entry — always insert a new one.
-    const isNewEntry = !form.supplierId || supplierEdited;
-    if (isNewEntry && saveSuppliers && form.supplierName.trim()) {
-      const nameKey = form.supplierName.trim().toLowerCase();
-      const gstKey = (form.supplierGST || "").trim().toUpperCase();
-      // Only skip if an entry with the exact same name AND GSTIN already exists.
-      const exists = suppliers.some(s =>
-        (s.name || "").trim().toLowerCase() === nameKey &&
-        (gstKey ? (s.gstin || "").trim().toUpperCase() === gstKey : true)
-      );
-      if (!exists) {
-        const newSupplier = {
-          id: "SUP-" + Date.now(),
-          name: form.supplierName.trim(),
-          address: form.supplierAddress.trim(),
-          gstin: form.isInternational ? "" : gstKey,
-          isInternational: !!form.isInternational,
-          country: form.supplierCountry.trim(),
-          taxId: form.supplierTaxId.trim(),
-          createdBy: user.id, createdByName: user.name, createdAt: now,
-        };
-        await saveSuppliers([newSupplier, ...suppliers]);
-      }
-    }
-
     const baseData = {
-      isProject: form.isProject, projectId: form.projectId, category: form.category,
+      isProject: true, projectId: form.projectId, category: "",
       supplierName: form.supplierName, supplierAddress: form.supplierAddress,
       supplierGST: form.supplierGST.trim().toUpperCase(),
       isInternational: form.isInternational, supplierCountry: form.supplierCountry, supplierTaxId: form.supplierTaxId,
@@ -307,7 +236,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
         <FileSignature className="w-5 h-5 text-teal-600" />
         <h2 className="text-xl font-bold text-slate-900">{isEdit ? "Edit PI Request" : "Raise PI Request"}</h2>
       </div>
-      <p className="text-sm text-slate-600 mb-5">{isEdit ? "Edit existing PI. PI amount auto-calculated from line items." : "PI is raised for one supplier. Amount auto-calculated from line items."}</p>
+      <p className="text-sm text-slate-600 mb-5">{isEdit ? "Edit existing PI. PI amount auto-calculated from line items." : "PI is raised to a client for a project. Amount auto-calculated from line items."}</p>
 
       <div className="space-y-4">
         {isEdit && (
@@ -317,17 +246,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
           </div>
         )}
 
-        {!isEdit && canRaiseProjectPI && (
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setForm({ ...form, isProject: true, category: "" })} className={`px-3 py-2.5 rounded-lg text-sm font-semibold border ${form.isProject ? "bg-teal-600 text-white border-teal-600" : "bg-white border-slate-200 text-slate-700"}`}><Briefcase className="w-4 h-4 inline mr-1" />For Project</button>
-            <button onClick={() => setForm({ ...form, isProject: false, projectId: "" })} className={`px-3 py-2.5 rounded-lg text-sm font-semibold border ${!form.isProject ? "bg-teal-600 text-white border-teal-600" : "bg-white border-slate-200 text-slate-700"}`}><Target className="w-4 h-4 inline mr-1" />Department (Non-Project)</button>
-          </div>
-        )}
-        {!isEdit && !canRaiseProjectPI && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900"><strong>{user.dept}</strong> can only raise non-project PIs.</div>
-        )}
-
-        {form.isProject && !isEdit && (
+        {!isEdit && (
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">Project *</label>
             {activeBudgets.length === 0 ? (
@@ -341,79 +260,22 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
           </div>
         )}
 
-        {!form.isProject && !isEdit && (
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Category *</label>
-            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
-              <option value="">Select</option>
-              {EXPENSE_TYPES.filter(t => t.category === "Non-Project").map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-            </select>
-          </div>
-        )}
-
-        {!form.isProject && !isEdit && form.category && (
-          monthlyBudget ? (
-            <div className={`rounded-lg p-3 border ${grandTotalINR > monthlyAvailable && grandTotalINR > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
-              <div className="text-xs font-bold text-slate-900 mb-1.5">📊 {user.dept} Monthly Budget — {form.category} ({currentMonth})</div>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="bg-white rounded p-1.5"><div className="text-slate-500">Approved</div><div className="font-bold">₹{(monthlyBudget.amountINR / 1000).toFixed(1)}K</div></div>
-                <div className="bg-white rounded p-1.5"><div className="text-slate-500">Used</div><div className="font-bold">₹{(monthlyUsage.total / 1000).toFixed(1)}K</div></div>
-                <div className="bg-white rounded p-1.5"><div className="text-slate-500">Available</div><div className="font-bold text-emerald-700">₹{(monthlyAvailable / 1000).toFixed(1)}K</div></div>
-              </div>
-              {grandTotalINR > monthlyAvailable && grandTotalINR > 0 && <div className="text-xs text-amber-700 font-semibold mt-1.5">⚠ This PI (₹{(grandTotalINR / 1000).toFixed(1)}K) exceeds the available pool. It can still be raised, but consider a Budget Extension.</div>}
-            </div>
-          ) : (
-            <div className="rounded-lg p-3 border bg-amber-50 border-amber-200 text-xs">
-              <div className="font-bold text-amber-900"><AlertTriangle className="w-4 h-4 inline mr-1" />No Monthly Budget for {form.category}</div>
-              <div className="text-amber-800 mt-0.5">{user.dept} has no active Monthly Budget for <strong>{form.category}</strong> in {currentMonth}. Ask your Dept Head to raise one before raising this PI.</div>
-            </div>
-          )
-        )}
-
-        {/* Supplier Details */}
+        {/* Client Details */}
         <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-            <div className="text-xs font-bold text-teal-900"><Briefcase className="w-3.5 h-3.5 inline mr-1" />Supplier Details</div>
+            <div className="text-xs font-bold text-teal-900"><Briefcase className="w-3.5 h-3.5 inline mr-1" />Client Details</div>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-teal-900 cursor-pointer">
-              <input type="checkbox" checked={form.isInternational} onChange={(e) => updateSupplierField("isInternational", e.target.checked)} className="w-3.5 h-3.5" />
-              International supplier (no GSTIN)
+              <input type="checkbox" checked={form.isInternational} onChange={(e) => setForm({ ...form, isInternational: e.target.checked })} className="w-3.5 h-3.5" />
+              International client (no GSTIN)
             </label>
-          </div>
-
-          {/* Pick from saved suppliers (autofills but stays editable) */}
-          <div className="mb-3">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Saved Supplier</label>
-            <select value={form.supplierId} onChange={(e) => selectSupplier(e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white">
-              <option value="">{suppliers.length === 0 ? "No saved suppliers yet — enter manually below" : "— Enter manually (new supplier) —"}</option>
-              {suppliers.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(s => (
-                <option key={s.id} value={s.id}>{s.name}{s.gstin ? ` · ${s.gstin}` : s.isInternational ? " · Intl" : ""}</option>
-              ))}
-            </select>
-
-            {/* Contextual hint depending on state */}
-            {supplierFromMaster && (
-              <p className="text-xs text-teal-700 mt-1 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 shrink-0" />
-                Autofilled from saved supplier — you can edit any field below if needed.
-              </p>
-            )}
-            {form.supplierId && supplierEdited && (
-              <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
-                <PencilLine className="w-3 h-3 shrink-0" />
-                Details edited — will be saved as a new supplier entry on submit.
-              </p>
-            )}
-            {!form.supplierId && form.supplierName.trim() && (
-              <p className="text-xs text-slate-500 mt-1">New supplier — will be saved for next time.</p>
-            )}
           </div>
 
           <div className="space-y-2">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Supplier Name *</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Client Name *</label>
               <input
                 value={form.supplierName}
-                onChange={(e) => updateSupplierField("supplierName", e.target.value)}
+                onChange={(e) => setForm({ ...form, supplierName: e.target.value })}
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
               />
             </div>
@@ -421,7 +283,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
               <label className="block text-xs font-semibold text-slate-700 mb-1">Address *</label>
               <textarea
                 value={form.supplierAddress}
-                onChange={(e) => updateSupplierField("supplierAddress", e.target.value)}
+                onChange={(e) => setForm({ ...form, supplierAddress: e.target.value })}
                 rows={2}
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
               />
@@ -431,7 +293,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
                 <label className="block text-xs font-semibold text-slate-700 mb-1">GSTIN * <span className="font-normal text-slate-500">(15 chars, e.g. 09AABCA1234A1ZP)</span></label>
                 <input
                   value={form.supplierGST}
-                  onChange={(e) => updateSupplierField("supplierGST", e.target.value.toUpperCase())}
+                  onChange={(e) => setForm({ ...form, supplierGST: e.target.value.toUpperCase() })}
                   placeholder="09AABCA1234A1ZP"
                   className={`w-full px-3 py-1.5 border rounded-lg text-sm font-mono ${form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) ? "border-red-300 bg-red-50" : "border-slate-300"}`}
                   maxLength={15}
@@ -445,7 +307,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Country *</label>
                   <input
                     value={form.supplierCountry}
-                    onChange={(e) => updateSupplierField("supplierCountry", e.target.value)}
+                    onChange={(e) => setForm({ ...form, supplierCountry: e.target.value })}
                     placeholder="e.g. USA, Singapore"
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
                   />
@@ -454,7 +316,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Tax ID / VAT (optional)</label>
                   <input
                     value={form.supplierTaxId}
-                    onChange={(e) => updateSupplierField("supplierTaxId", e.target.value)}
+                    onChange={(e) => setForm({ ...form, supplierTaxId: e.target.value })}
                     placeholder="EIN / VAT / TIN"
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-mono"
                   />
@@ -470,7 +332,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
             <input type="checkbox" checked={form.hasPO} onChange={(e) => setForm({ ...form, hasPO: e.target.checked, verified: false })} className="w-4 h-4 mt-0.5" />
             <span>
               <span className="text-xs font-bold text-fuchsia-900"><FileText className="w-3.5 h-3.5 inline mr-1" />I have a Purchase Order (PO) for this PI</span>
-              <span className="block text-xs text-fuchsia-700 mt-0.5">Tick this if you already have a PO for this supplier. You won't need to fill the line-items table — just enter the PO totals below and attach the PO document.</span>
+              <span className="block text-xs text-fuchsia-700 mt-0.5">Tick this if you already have a PO from the client. You won't need to fill the line-items table — just enter the PO totals below and attach the PO document.</span>
             </span>
           </label>
           {form.hasPO && (
@@ -604,7 +466,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, suppliers = [],
           </>
         )}
 
-        <AttachmentInput form={form} setForm={setForm} handleFileUpload={handleFileUpload} required={!isEdit} label={isEdit ? "Updated Quote / PO (optional)" : form.hasPO ? "Purchase Order (PO) Document" : "Vendor Quote / Supporting Doc"} />
+        <AttachmentInput form={form} setForm={setForm} handleFileUpload={handleFileUpload} required={!isEdit} label={isEdit ? "Updated Quote / PO (optional)" : form.hasPO ? "Purchase Order (PO) Document" : "Client Quote / Supporting Doc"} />
 
         {/* Verify Total checkbox */}
         {totals.grandTotal > 0 && (

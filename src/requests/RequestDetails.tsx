@@ -28,7 +28,7 @@ export function RequestDetails({ request: r, pos_all }) {
         <div className="grid sm:grid-cols-2 gap-2 text-xs">
           {isPOorPI && (
             <>
-              <div className="sm:col-span-2"><span className="text-slate-500">Supplier:</span> <strong>{r.supplierName}</strong></div>
+              <div className="sm:col-span-2"><span className="text-slate-500">{isPI ? "Client" : "Supplier"}:</span> <strong>{r.supplierName}</strong></div>
               <div className="sm:col-span-2"><span className="text-slate-500">Address:</span> {r.supplierAddress}</div>
               {r.isInternational ? (
                 <>

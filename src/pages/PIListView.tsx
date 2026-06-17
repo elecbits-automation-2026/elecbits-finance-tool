@@ -106,7 +106,7 @@ function PICard({ pi, pos, user, onEdit, onCancel }) {
         {expanded && (
           <div className="mt-3 pt-3 border-t border-slate-100 space-y-3 text-xs">
             <div>
-              <div className="font-bold text-slate-700 mb-1">Supplier</div>
+              <div className="font-bold text-slate-700 mb-1">Client</div>
               <div>{pi.supplierName}</div>
               <div>{pi.supplierAddress}</div>
               {pi.isInternational ? (
