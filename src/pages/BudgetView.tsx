@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Briefcase, Target } from "lucide-react";
+import { Briefcase, Target, Zap } from "lucide-react";
 import { getMonthlyBudgetUsage } from "../lib/finance";
 import { isReadOnly } from "../lib/access";
 
@@ -17,6 +17,7 @@ export function BudgetView({ user, budgets, requests }) {
 
   const clientProjects = scoped.filter(b => b.type === "Project" && b.projectType === "Client" && (b.status === "Active" || b.currentStage === "Active"));
   const rdProjects = scoped.filter(b => b.type === "Project" && b.projectType === "RD" && (b.status === "Active" || b.currentStage === "Active"));
+  const oneTimeBudgets = scoped.filter(b => b.type === "Project" && b.projectType === "OneTime" && (b.status === "Active" || b.currentStage === "Active"));
   const monthlyBudgets = scoped.filter(b => b.type === "Monthly" && (b.status === "Active" || b.currentStage === "Active"));
   const extensions = scoped.filter(b => b.type === "Extension" && (b.status === "Active" || b.currentStage === "Active"));
 
@@ -25,6 +26,7 @@ export function BudgetView({ user, budgets, requests }) {
       <div className="flex gap-2 mb-4 border-b border-slate-200 overflow-x-auto">
         <button onClick={() => setTab("client")} className={`px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${tab === "client" ? "border-blue-600 text-blue-700" : "border-transparent text-slate-600"}`}><Briefcase className="w-4 h-4 inline mr-1" />Client ({clientProjects.length})</button>
         <button onClick={() => setTab("rd")} className={`px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${tab === "rd" ? "border-fuchsia-600 text-fuchsia-700" : "border-transparent text-slate-600"}`}><Target className="w-4 h-4 inline mr-1" />R&D ({rdProjects.length})</button>
+        <button onClick={() => setTab("onetime")} className={`px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${tab === "onetime" ? "border-emerald-600 text-emerald-700" : "border-transparent text-slate-600"}`}><Zap className="w-4 h-4 inline mr-1" />One-Time ({oneTimeBudgets.length})</button>
         <button onClick={() => setTab("monthly")} className={`px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${tab === "monthly" ? "border-blue-600 text-blue-700" : "border-transparent text-slate-600"}`}>Monthly ({monthlyBudgets.length})</button>
         <button onClick={() => setTab("extensions")} className={`px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${tab === "extensions" ? "border-blue-600 text-blue-700" : "border-transparent text-slate-600"}`}>Extensions ({extensions.length})</button>
       </div>
@@ -82,6 +84,35 @@ export function BudgetView({ user, budgets, requests }) {
                   <div className="bg-fuchsia-50 rounded p-2"><div className="text-fuchsia-700">Budget</div><div className="font-bold">₹{(b.amountINR / 1000).toFixed(1)}K</div></div>
                   <div className="bg-emerald-50 rounded p-2"><div className="text-emerald-700">Paid</div><div className="font-bold">₹{(paid / 1000).toFixed(1)}K</div></div>
                   <div className="bg-amber-50 rounded p-2"><div className="text-amber-700">Committed</div><div className="font-bold">₹{(committed / 1000).toFixed(1)}K</div></div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "onetime" && (
+        <div className="space-y-3">
+          {oneTimeBudgets.length === 0 && <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-500">No active one-time budgets.</div>}
+          {oneTimeBudgets.map(b => {
+            const paid = requests.filter(r => r.projectId === b.projectId && r.status === "Paid").reduce((s, r) => s + (r.amountINR || r.amount), 0);
+            const committed = requests.filter(r => r.projectId === b.projectId && !["Paid", "Rejected", "Cancelled"].includes(r.status)).reduce((s, r) => s + (r.amountINR || r.amount), 0);
+            const avail = Math.max(0, b.amountINR - paid - committed);
+            return (
+              <div key={b.id} className="bg-white rounded-xl border border-emerald-200 p-4">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                  <div>
+                    <div className="flex items-center gap-2"><span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">ONE-TIME</span><div className="font-bold">{b.projectName}</div></div>
+                    <div className="text-xs text-slate-500 font-mono mt-0.5">{b.projectId} · {b.dept}</div>
+                    {b.reason && <div className="text-xs text-slate-600 mt-1 italic">{b.reason}</div>}
+                  </div>
+                  <span className="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 font-semibold">Active</span>
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-xs">
+                  <div className="bg-emerald-50 rounded p-2"><div className="text-emerald-700">Budget</div><div className="font-bold">₹{(b.amountINR / 100000).toFixed(2)}L</div></div>
+                  <div className="bg-emerald-50 rounded p-2"><div className="text-emerald-700">Paid</div><div className="font-bold">₹{(paid / 100000).toFixed(2)}L</div></div>
+                  <div className="bg-amber-50 rounded p-2"><div className="text-amber-700">Committed</div><div className="font-bold">₹{(committed / 100000).toFixed(2)}L</div></div>
+                  <div className="bg-slate-50 rounded p-2"><div className="text-slate-500">Available</div><div className="font-bold">₹{(avail / 100000).toFixed(2)}L</div></div>
                 </div>
               </div>
             );

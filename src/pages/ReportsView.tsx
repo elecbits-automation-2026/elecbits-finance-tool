@@ -30,11 +30,11 @@ export function ReportsView({ user, requests, budgets, pos }) {
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <h3 className="font-bold text-slate-900 mb-3">Active Project Budgets</h3>
-            {[...clientProjects, ...rdProjects].length === 0 && <div className="text-sm text-slate-500">None</div>}
-            {[...clientProjects, ...rdProjects].map(b => (
+            {activeProjBudgets.length === 0 && <div className="text-sm text-slate-500">None</div>}
+            {activeProjBudgets.map(b => (
               <div key={b.id} className="flex justify-between text-sm py-1.5 border-b border-slate-100 last:border-0">
                 <div>
-                  <span className={`text-xs px-1.5 py-0.5 rounded font-bold mr-2 ${b.projectType === "RD" ? "bg-fuchsia-100 text-fuchsia-700" : "bg-blue-100 text-blue-700"}`}>{b.projectType === "RD" ? "R&D" : "CLIENT"}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-bold mr-2 ${b.projectType === "RD" ? "bg-fuchsia-100 text-fuchsia-700" : b.projectType === "OneTime" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>{b.projectType === "RD" ? "R&D" : b.projectType === "OneTime" ? "ONE-TIME" : "CLIENT"}</span>
                   <span className="font-mono text-xs">{b.projectId}</span>
                   <span className="ml-2">{b.projectName}</span>
                 </div>

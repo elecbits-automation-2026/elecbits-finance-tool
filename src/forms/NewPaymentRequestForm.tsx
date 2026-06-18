@@ -210,7 +210,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
                   const projReqs = requests.filter(r => r.projectId === b.projectId && !["Rejected", "Cancelled"].includes(r.status));
                   const committed = projReqs.reduce((s, r) => s + (r.amountINR || r.amount), 0);
                   const avail = b.amountINR - committed;
-                  const tag = b.projectType === "RD" ? "[R&D] " : "[Client] ";
+                  const tag = b.projectType === "RD" ? "[R&D] " : b.projectType === "OneTime" ? "[One-Time] " : "[Client] ";
                   return <option key={b.projectId} value={b.projectId}>{tag}{b.projectId} — {b.projectName} (₹{(avail / 100000).toFixed(2)}L avail)</option>;
                 })}
               </select>

@@ -19,9 +19,11 @@ export function OrgOverview({ user, requests, budgets, pos, showToast }) {
 
   const clientBudgets = visibleBudgets.filter(b => b.type === "Project" && b.projectType === "Client" && (b.status === "Active" || b.currentStage === "Active"));
   const rdBudgets = visibleBudgets.filter(b => b.type === "Project" && b.projectType === "RD" && (b.status === "Active" || b.currentStage === "Active"));
-  const allActiveBudgets = [...clientBudgets, ...rdBudgets];
+  const oneTimeBudgets = visibleBudgets.filter(b => b.type === "Project" && b.projectType === "OneTime" && (b.status === "Active" || b.currentStage === "Active"));
+  const allActiveBudgets = [...clientBudgets, ...rdBudgets, ...oneTimeBudgets];
   const activeClientBudget = clientBudgets.reduce((s, b) => s + b.amountINR, 0);
   const activeRDBudget = rdBudgets.reduce((s, b) => s + b.amountINR, 0);
+  const activeOneTimeBudget = oneTimeBudgets.reduce((s, b) => s + b.amountINR, 0);
 
   const byDept: Record<string, number> = {};
   visibleRequests.filter(r => r.status === "Paid").forEach(r => { byDept[r.dept] = (byDept[r.dept] || 0) + (r.amountINR || r.amount); });
@@ -37,7 +39,7 @@ export function OrgOverview({ user, requests, budgets, pos, showToast }) {
         { label: "Total Payment Reqs", value: total, color: "blue", icon: FileText, onClick: () => handleCardClick(visibleRequests, "All Payments") },
         { label: "Paid (INR)", value: "₹" + (totalPaidINR / 100000).toFixed(1) + "L", color: "emerald", icon: CheckCircle2, onClick: () => handleCardClick(paidReqs, "Paid") },
         { label: "Pending (INR)", value: "₹" + (totalPendingINR / 100000).toFixed(1) + "L", color: "amber", icon: Clock, onClick: () => handleCardClick(pendingReqs, "Pending") },
-        { label: "Active Budgets", value: "₹" + ((activeClientBudget + activeRDBudget) / 100000).toFixed(0) + "L", color: "indigo", icon: PiggyBank, onClick: () => handleCardClick(allActiveBudgets, "Active Budgets") },
+        { label: "Active Budgets", value: "₹" + ((activeClientBudget + activeRDBudget + activeOneTimeBudget) / 100000).toFixed(0) + "L", color: "indigo", icon: PiggyBank, onClick: () => handleCardClick(allActiveBudgets, "Active Budgets") },
       ]} />
 
       <div className="grid md:grid-cols-2 gap-4">

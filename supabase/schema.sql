@@ -586,6 +586,11 @@ begin
         if amt > greatest(0, alloc - used) then
           raise exception 'budgets: exceeds remaining R&D allocation (₹%)', greatest(0, alloc - used);
         end if;
+      elsif d->>'projectType' = 'OneTime' then
+        -- One-time budget: a one-off spend with no client order value and no
+        -- 80% cap. Same dept/role gates as a Client project; the unique
+        -- projectId guard below still applies (the client auto-generates one).
+        null;
       else
         if coalesce((d->>'clientOrderValue')::numeric, 0) <= 0 then
           raise exception 'budgets: client order value required';

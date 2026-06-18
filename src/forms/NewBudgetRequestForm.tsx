@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PiggyBank, Briefcase, Target, TrendingUp, Coins, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { PiggyBank, Briefcase, Target, TrendingUp, Coins, AlertTriangle, CheckCircle2, Zap } from "lucide-react";
 import { EXPENSE_TYPES, NON_PROJECT_DEPTS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
 import { isHODLevel, isReadOnly, effectiveDepts } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel, computeNextStage } from "../lib/workflow";
@@ -84,7 +84,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
     reader.readAsDataURL(file);
   }
 
-  function resetProjectType() { setProjectType(null); setForm({ ...form, projectId: "", projectName: "", client: "", clientOrderValue: "", amount: "", rdType: "", justification: "", expectedOutcome: "", scope: "" }); }
+  function resetProjectType() { setProjectType(null); setForm({ ...form, projectId: "", projectName: "", client: "", clientOrderValue: "", amount: "", rdType: "", justification: "", expectedOutcome: "", scope: "", reason: "" }); }
 
   async function submit() {
     setErr("");
@@ -103,23 +103,30 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
     if (form.currency !== "INR" && (!form.fxRate || parseFloat(form.fxRate) <= 0)) return setErr("Valid FX rate required");
 
     if (budgetType === "Project") {
-      if (!projectType) return setErr("Select Client or R&D");
-      if (!form.projectId.trim()) return setErr("Project ID required");
-      if (!form.projectName.trim()) return setErr("Project Name required");
-      if (budgets.find(b => b.type === "Project" && b.projectId === form.projectId && !["Rejected", "Cancelled"].includes(b.status))) return setErr("Budget already exists for this Project ID. Raise an Extension.");
+      if (!projectType) return setErr("Select Client, R&D or One-Time");
+      if (projectType === "OneTime") {
+        // A one-time budget is a one-off spend: only a reason is required. The
+        // project id/name are auto-generated below so it stays spendable and
+        // unique without the user filling them in.
+        if (!form.reason.trim()) return setErr("Reason required");
+      } else {
+        if (!form.projectId.trim()) return setErr("Project ID required");
+        if (!form.projectName.trim()) return setErr("Project Name required");
+        if (budgets.find(b => b.type === "Project" && b.projectId === form.projectId && !["Rejected", "Cancelled"].includes(b.status))) return setErr("Budget already exists for this Project ID. Raise an Extension.");
 
-      if (projectType === "Client") {
-        if (!form.client.trim()) return setErr("Client name required");
-        if (!form.clientOrderValue || clientOrderINR <= 0) return setErr("Client Order Value required");
-        if (!form.scope.trim()) return setErr("Scope required");
-        if (amountINR > maxAllowedBudget) return setErr(`Budget cannot exceed 80% of Client Order (max ₹${(maxAllowedBudget / 100000).toFixed(2)}L).`);
-      } else if (projectType === "RD") {
-        if (!canRaiseRD) return setErr("Only ODM can raise R&D budgets.");
-        if (!form.rdType) return setErr("R&D Type required");
-        if (!form.justification.trim()) return setErr("Justification required");
-        if (!form.expectedOutcome.trim()) return setErr("Expected Outcome required");
-        if (rdAllocated == null) return setErr(`No R&D budget allocated for ${user.dept} for ${currentMonth}. Request an allocation from management below.`);
-        if (amountINR > rdAvailableThisMonth) return setErr(`Exceeds allocated R&D budget. Available: ₹${(rdAvailableThisMonth / 1000).toFixed(1)}K. Use Extension instead.`);
+        if (projectType === "Client") {
+          if (!form.client.trim()) return setErr("Client name required");
+          if (!form.clientOrderValue || clientOrderINR <= 0) return setErr("Client Order Value required");
+          if (!form.scope.trim()) return setErr("Scope required");
+          if (amountINR > maxAllowedBudget) return setErr(`Budget cannot exceed 80% of Client Order (max ₹${(maxAllowedBudget / 100000).toFixed(2)}L).`);
+        } else if (projectType === "RD") {
+          if (!canRaiseRD) return setErr("Only ODM can raise R&D budgets.");
+          if (!form.rdType) return setErr("R&D Type required");
+          if (!form.justification.trim()) return setErr("Justification required");
+          if (!form.expectedOutcome.trim()) return setErr("Expected Outcome required");
+          if (rdAllocated == null) return setErr(`No R&D budget allocated for ${user.dept} for ${currentMonth}. Request an allocation from management below.`);
+          if (amountINR > rdAvailableThisMonth) return setErr(`Exceeds allocated R&D budget. Available: ₹${(rdAvailableThisMonth / 1000).toFixed(1)}K. Use Extension instead.`);
+        }
       }
     } else if (budgetType === "Monthly") {
       if (!form.category) return setErr("Category required");
@@ -160,11 +167,18 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
           ? computeNextStage({ kind: "Budget", amountINR, type: budgetType }, "DeptApproval", null)
           : "DeptApproval");
 
+    // One-time budgets carry no user-entered project id/name; auto-generate a
+    // unique id (so it's spendable via the project payment flow and passes the
+    // server's unique-projectId guard) and a readable name from the reason.
+    const isOneTime = budgetType === "Project" && projectType === "OneTime";
+    const oneTimeProjectId = "OT-" + Date.now();
+    const oneTimeProjectName = "One-Time: " + form.reason.trim().slice(0, 50);
+
     const newBudget = {
       id: "BUD-" + Date.now(), kind: "Budget", type: budgetType, projectType: budgetType === "Project" ? projectType : undefined,
       isProject: isProjectBudget,
       createdDate: now, requesterId: user.id, requesterName: user.name, dept: user.dept,
-      projectId: form.projectId, projectName: form.projectName, client: form.client,
+      projectId: isOneTime ? oneTimeProjectId : form.projectId, projectName: isOneTime ? oneTimeProjectName : form.projectName, client: form.client,
       startDate: form.startDate, endDate: form.endDate,
       clientOrderValue: projectType === "Client" ? clientOrderINR : 0,
       clientOrderValueCurrency: form.clientOrderCurrency, clientOrderValueFxRate: parseFloat(form.clientOrderFxRate),
@@ -213,7 +227,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
       {budgetType === "Project" && canRaiseProject && !projectType && (
         <div className="space-y-3">
           <div className="text-sm font-semibold text-slate-700 mb-2">Project type?</div>
-          <div className="grid md:grid-cols-2 gap-3">
+          <div className="grid md:grid-cols-3 gap-3">
             <button onClick={() => setProjectType("Client")} className="text-left bg-white border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-2"><div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center"><Briefcase className="w-5 h-5" /></div><div className="font-bold">Client Project</div></div>
               <div className="text-xs text-slate-600 space-y-1">
@@ -227,6 +241,14 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
               <div className="text-xs text-slate-600 space-y-1">
                 <div>✓ ODM only</div>
                 <div>{rdAllocated != null ? `✓ Allocated this month: ₹${(rdAllocated / 1000).toFixed(0)}K (avail: ₹${(rdAvailableThisMonth / 1000).toFixed(1)}K)` : "⚠ No budget allocated this month"}</div>
+              </div>
+            </button>
+            <button onClick={() => setProjectType("OneTime")} className="text-left bg-white border-2 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-2"><div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center"><Zap className="w-5 h-5" /></div><div className="font-bold">One-Time Budget</div></div>
+              <div className="text-xs text-slate-600 space-y-1">
+                <div>✓ One-off spend</div>
+                <div>✓ Reason + amount + doc</div>
+                <div>✓ Same approval flow</div>
               </div>
             </button>
           </div>
@@ -296,6 +318,16 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
           </>
         )}
 
+        {budgetType === "Project" && projectType === "OneTime" && (
+          <>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-900">
+              A one-time budget is a one-off approved spend. It uses the same approval flow as project budgets (Dept Head → Finance Head → VP/CEO by amount). Once active, payment requests can be raised against it.
+            </div>
+            <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Reason *</label><textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} rows={3} placeholder="What is this one-time budget for?" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+            <CurrencyInput value={form.amount} currency={form.currency} fxRate={form.fxRate} onChange={(v) => setForm({ ...form, amount: v.amount, currency: v.currency, fxRate: v.fxRate })} label="Amount" required />
+          </>
+        )}
+
         {budgetType === "Monthly" && (
           <>
             <div className="grid md:grid-cols-2 gap-4">
@@ -320,7 +352,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Extend which Project? *</label>
               <select value={form.extensionFor} onChange={(e) => setForm({ ...form, extensionFor: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                 <option value="">Select</option>
-                {budgets.filter(b => b.type === "Project" && (b.status === "Active" || b.currentStage === "Active") && effectiveDepts(user).includes(b.dept)).map(b => <option key={b.projectId} value={b.projectId}>[{b.projectType === "RD" ? "R&D" : "Client"}] {b.projectId} — {b.projectName}</option>)}
+                {budgets.filter(b => b.type === "Project" && b.projectType !== "OneTime" && (b.status === "Active" || b.currentStage === "Active") && effectiveDepts(user).includes(b.dept)).map(b => <option key={b.projectId} value={b.projectId}>[{b.projectType === "RD" ? "R&D" : "Client"}] {b.projectId} — {b.projectName}</option>)}
               </select>
             </div>
             <CurrencyInput value={form.amount} currency={form.currency} fxRate={form.fxRate} onChange={(v) => setForm({ ...form, amount: v.amount, currency: v.currency, fxRate: v.fxRate })} label="Extension Amount" required />
@@ -334,7 +366,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
             {amountINR > 0 && <FlowPreview steps={[user.name, "Dept Head", "Finance Head", amountINR >= VP_THRESHOLD ? "VP" : null, amountINR >= CEO_THRESHOLD ? "CEO" : null, "Active"].filter(Boolean)} />}
             {err && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">{err}</div>}
             <div className="flex gap-2">
-              <button onClick={submit} disabled={submitting} className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white font-semibold px-5 py-2.5 rounded-lg text-sm">{submitting ? "Submitting…" : `Submit ${budgetType} Budget`}</button>
+              <button onClick={submit} disabled={submitting} className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white font-semibold px-5 py-2.5 rounded-lg text-sm">{submitting ? "Submitting…" : projectType === "OneTime" ? "Submit One-Time Budget" : `Submit ${budgetType} Budget`}</button>
             </div>
           </>
         )}

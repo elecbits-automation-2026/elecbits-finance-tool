@@ -252,7 +252,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
             ) : (
               <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                 <option value="">Select project</option>
-                {activeBudgets.map(b => <option key={b.projectId} value={b.projectId}>[{b.projectType === "RD" ? "R&D" : "Client"}] {b.projectId} — {b.projectName}</option>)}
+                {activeBudgets.map(b => <option key={b.projectId} value={b.projectId}>[{b.projectType === "RD" ? "R&D" : b.projectType === "OneTime" ? "One-Time" : "Client"}] {b.projectId} — {b.projectName}</option>)}
               </select>
             )}
           </div>
