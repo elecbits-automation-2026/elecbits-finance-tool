@@ -9,6 +9,16 @@ import { Dashboard } from "./pages/Dashboard";
 import { AdminConsole } from "./pages/AdminConsole";
 import { Toast } from "./components/Toast";
 
+// True when the page was opened from a password-reset email link, which carries
+// `type=recovery` in the URL hash (e.g. #access_token=…&type=recovery).
+function isRecoveryUrl() {
+  try {
+    return new URLSearchParams(window.location.hash.replace(/^#/, "")).get("type") === "recovery";
+  } catch {
+    return false;
+  }
+}
+
 // ============ MAIN APP ============
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -22,19 +32,25 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [recovery, setRecovery] = useState(false);
+  // A "forgot password" reset link lands on #...&type=recovery. Detect it
+  // synchronously on first render — Supabase strips the hash asynchronously as it
+  // establishes the recovery session, so reading it now (and not relying solely
+  // on the async PASSWORD_RECOVERY event) reliably wins that race.
+  const [recovery, setRecovery] = useState(isRecoveryUrl);
 
-  // Restore an existing Supabase session on first load.
+  // Restore an existing Supabase session on first load — but NOT when arriving
+  // via a recovery link, or we'd route that temporary session into the app
+  // instead of showing the set-new-password screen.
   useEffect(() => {
+    if (recovery) { setLoading(false); return; }
     getCurrentUser()
       .then((u) => setCurrentUser(u))
       .catch((err) => console.error("Session restore failed:", err))
       .finally(() => setLoading(false));
   }, []);
 
-  // When the user follows a "forgot password" reset-link email, Supabase puts
-  // them in a temporary recovery session and fires PASSWORD_RECOVERY. Show the
-  // set-new-password screen instead of letting that session into the app.
+  // Backup for the case where the hash was already consumed before first render:
+  // Supabase fires PASSWORD_RECOVERY once it parses the recovery token.
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
@@ -162,10 +178,11 @@ export default function App() {
     setDataLoaded(false);
   }
 
+  // Recovery takes priority over the loading screen and any session the URL also
+  // established, so a user arriving from a reset link always lands on "set a new
+  // password" first.
+  if (recovery) return <ResetPasswordPage onDone={() => { window.location.hash = ""; setRecovery(false); setCurrentUser(null); setDataLoaded(false); }} />;
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="text-slate-500">Loading…</div></div>;
-  // Recovery takes priority over any session the URL also established, so a user
-  // arriving from a reset link always lands on "set a new password" first.
-  if (recovery) return <ResetPasswordPage onDone={() => { setRecovery(false); setCurrentUser(null); setDataLoaded(false); }} />;
   if (!currentUser) return <LoginPage onLogin={handleLogin} />;
   if (currentUser.role === "Admin") return (
     <>
