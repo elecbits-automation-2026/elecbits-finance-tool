@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { db } from "./lib/db";
 import { signIn, signOut, getCurrentUser, listEmployees } from "./lib/auth";
+import { supabase } from "./lib/supabase";
 import { setRoster } from "./lib/roster";
 import { LoginPage } from "./pages/LoginPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { Dashboard } from "./pages/Dashboard";
 import { AdminConsole } from "./pages/AdminConsole";
 import { Toast } from "./components/Toast";
@@ -20,6 +22,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [recovery, setRecovery] = useState(false);
 
   // Restore an existing Supabase session on first load.
   useEffect(() => {
@@ -27,6 +30,19 @@ export default function App() {
       .then((u) => setCurrentUser(u))
       .catch((err) => console.error("Session restore failed:", err))
       .finally(() => setLoading(false));
+  }, []);
+
+  // When the user follows a "forgot password" reset-link email, Supabase puts
+  // them in a temporary recovery session and fires PASSWORD_RECOVERY. Show the
+  // set-new-password screen instead of letting that session into the app.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setRecovery(true);
+        setLoading(false);
+      }
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   // Load shared finance data once a user is signed in.
@@ -147,6 +163,9 @@ export default function App() {
   }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="text-slate-500">Loading…</div></div>;
+  // Recovery takes priority over any session the URL also established, so a user
+  // arriving from a reset link always lands on "set a new password" first.
+  if (recovery) return <ResetPasswordPage onDone={() => { setRecovery(false); setCurrentUser(null); setDataLoaded(false); }} />;
   if (!currentUser) return <LoginPage onLogin={handleLogin} />;
   if (currentUser.role === "Admin") return (
     <>

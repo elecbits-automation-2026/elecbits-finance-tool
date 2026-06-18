@@ -73,6 +73,52 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
+// "Reset" button: change the password when the user still knows their current
+// one. We verify the old password by signing in with it (Supabase never exposes
+// the stored hash), then set the new password and sign back out so the user
+// re-authenticates with it — which also re-runs the normal status gate in signIn().
+export async function changePassword(email: string, oldPassword: string, newPassword: string) {
+  const resolved = resolveLoginEmail(email);
+  if (newPassword.length < 6) return { success: false as const, error: "New password must be at least 6 characters." };
+  if (newPassword === oldPassword) return { success: false as const, error: "New password must be different from the current one." };
+
+  const { error: signInErr } = await supabase.auth.signInWithPassword({ email: resolved, password: oldPassword });
+  if (signInErr) return { success: false as const, error: "Email or current password is incorrect." };
+
+  const { error: updErr } = await supabase.auth.updateUser({ password: newPassword });
+  await supabase.auth.signOut();
+  if (updErr) return { success: false as const, error: updErr.message };
+  return { success: true as const };
+}
+
+// "Forgot password" button: email the user a secure reset link (Supabase's
+// built-in flow, sent via Supabase's email service). Clicking it returns them to
+// the app with a temporary recovery session, where they set a new password (see
+// completePasswordRecovery). Supabase deliberately doesn't reveal whether the
+// email exists, so callers should always show the same generic confirmation.
+export async function forgotPassword(email: string) {
+  const resolved = resolveLoginEmail(email);
+  const { error } = await supabase.auth.resetPasswordForEmail(resolved, {
+    redirectTo: window.location.origin,
+  });
+  if (error) return { success: false as const, error: error.message };
+  return { success: true as const };
+}
+
+// Final step of the forgot-password flow: the user arrived via the reset-link
+// email and is in a temporary recovery session, so updateUser can set the new
+// password directly. Sign out afterward so they log in fresh with it.
+export async function completePasswordRecovery(newPassword: string) {
+  if (newPassword.length < 6) return { success: false as const, error: "New password must be at least 6 characters." };
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) {
+    await supabase.auth.signOut();
+    return { success: false as const, error: error.message };
+  }
+  await supabase.auth.signOut();
+  return { success: true as const };
+}
+
 // Self-service signup: creates the auth account and a pending profile +
 // pending_signups record for an admin to assign a role/department.
 export async function signUp(opts: { email: string; password: string; name: string; dept?: string; designation?: string; requestedRole?: string }) {
