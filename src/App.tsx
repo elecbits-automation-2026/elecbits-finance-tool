@@ -49,13 +49,21 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Backup for the case where the hash was already consumed before first render:
-  // Supabase fires PASSWORD_RECOVERY once it parses the recovery token.
+  // Keep auth state in sync across tabs. Supabase mirrors the session to
+  // localStorage and fires onAuthStateChange in every tab, so this one listener
+  // makes logout, login and account-status changes propagate everywhere:
+  //  - PASSWORD_RECOVERY: backup for a reset link whose hash was already consumed.
+  //  - SIGNED_OUT: a logout (or a status-gate signOut) in any tab clears this one.
+  //  - SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED: re-validate through the status
+  //    gate, so a pending/disabled account (e.g. a fresh signup, which Supabase
+  //    auto-signs-in) is never shown — in this tab or another.
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setRecovery(true);
-        setLoading(false);
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") { setRecovery(true); setLoading(false); return; }
+      if (event === "SIGNED_OUT") { setCurrentUser(null); setDataLoaded(false); return; }
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+        if (!session) { setCurrentUser(null); return; }
+        getCurrentUser().then((u) => setCurrentUser(u)).catch((err) => console.error("Auth sync failed:", err));
       }
     });
     return () => sub.subscription.unsubscribe();

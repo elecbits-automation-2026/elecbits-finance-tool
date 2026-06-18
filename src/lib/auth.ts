@@ -68,8 +68,11 @@ export async function signIn(email: string, password: string) {
 
   const profile = await profileForAuthId(data.user.id);
   if (!profile) return { success: false as const, error: "No profile found for this account." };
-  if (profile.status === "pending") return { success: false as const, error: "Your account is awaiting admin approval." };
-  if (profile.status === "disabled") return { success: false as const, error: "This account has been disabled." };
+  // A correct password creates a Supabase session even for a pending/disabled
+  // account. Reject the login AND drop that session, or a later refresh (in this
+  // or another tab) could restore it via getCurrentUser.
+  if (profile.status === "pending") { await supabase.auth.signOut(); return { success: false as const, error: "Your account is awaiting admin approval." }; }
+  if (profile.status === "disabled") { await supabase.auth.signOut(); return { success: false as const, error: "This account has been disabled." }; }
   // 'deactivated' is intentionally allowed through: the real user's password was
   // reset on deactivation, so a successful sign-in here can only be the admin
   // using the generated access password to view this user's activity.
