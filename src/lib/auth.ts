@@ -39,6 +39,14 @@ export async function getCurrentUser() {
   if (!authUser) return null;
   const profile = await profileForAuthId(authUser.id);
   if (!profile) return null;
+  // Mirror signIn's status gate on the session-restore path. signUp() creates a
+  // Supabase session immediately, so without this a freshly-signed-up (pending)
+  // account would be auto-logged-in on a hard refresh — bypassing approval.
+  // 'deactivated' is intentionally allowed (admin viewing as the user, as in signIn).
+  if (profile.status === "pending" || profile.status === "disabled") {
+    await supabase.auth.signOut();
+    return null;
+  }
   return toUser(profile);
 }
 
@@ -152,6 +160,10 @@ export async function signUp(opts: { email: string; password: string; name: stri
       data: opts.designation ? { designation: opts.designation } : null,
     });
   }
+  // signUp() signs the new user in immediately (no email confirmation), which
+  // persists a session shared across tabs. A pending account must not be logged
+  // in, so drop that session now — the inserts above already ran while authed.
+  await supabase.auth.signOut();
   return { success: true as const };
 }
 
