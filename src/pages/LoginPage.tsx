@@ -16,6 +16,7 @@ export function LoginPage({ onLogin }) {
   const [name, setName] = useState("");
   const [dept, setDept] = useState("");
   const [designation, setDesignation] = useState("");
+  const [employeeCode, setEmployeeCode] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,10 +41,13 @@ export function LoginPage({ onLogin }) {
     setNotice("");
     if (!name.trim()) { setError("Please enter your name"); return; }
     if (!dept) { setError("Please select your department"); return; }
+    const code = employeeCode.trim().toUpperCase();
+    if (!code) { setError("Please enter your Employee Code"); return; }
+    if (!/^EB-[A-Z0-9]{4}-[A-Z0-9]{3}$/.test(code)) { setError("Employee Code must be in the format EB-XXXX-XXX"); return; }
     if (!email || !password) { setError("Please enter both email and password"); return; }
     if (password.length < 6) { setError("Password must be at least 6 characters"); return; }
     setBusy(true);
-    const r = await signUp({ email, password, name: name.trim(), dept, designation: designation.trim() || undefined });
+    const r = await signUp({ email, password, name: name.trim(), dept, designation: designation.trim() || undefined, employeeCode: code });
     setBusy(false);
     if (!r.success) { setError(r.error); return; }
     setNotice("Account created — it's awaiting admin approval. You'll be able to sign in once an admin activates it.");
@@ -144,6 +148,10 @@ export function LoginPage({ onLogin }) {
                     <option value="">Select a department…</option>
                     {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Employee Code <span className="font-normal text-red-500">*</span></label>
+                  <input type="text" value={employeeCode} onChange={(e) => setEmployeeCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && submitSignup()} placeholder="EB-XXXX-XXX" className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Designation <span className="font-normal text-slate-400">(optional)</span></label>

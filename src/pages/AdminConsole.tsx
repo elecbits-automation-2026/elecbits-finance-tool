@@ -264,6 +264,7 @@ export function AdminConsole({ user, onLogout, showToast }) {
                     <div className="text-xs text-slate-500 flex items-center gap-3 mt-0.5 flex-wrap">
                       <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{emp.email}</span>
                       {emp.dept && <span>· {emp.dept}</span>}
+                      {emp.employeeCode && <span className="font-mono">· {emp.employeeCode}</span>}
                       {emp.createdAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(emp.createdAt).toLocaleDateString()}</span>}
                     </div>
                     {emp.status === "deactivated" && accessMap[emp.authId] && (

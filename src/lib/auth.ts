@@ -20,6 +20,7 @@ function toUser(profile: any) {
     dept: profile.dept,
     extraDepts: profile.extra_depts ?? [],
     designation: profile.designation,
+    employeeCode: profile.employee_code ?? undefined,
     role: profile.role,
     scope: profile.scope ?? undefined,
     status: profile.status,
@@ -132,7 +133,7 @@ export async function completePasswordRecovery(newPassword: string) {
 
 // Self-service signup: creates the auth account and a pending profile +
 // pending_signups record for an admin to assign a role/department.
-export async function signUp(opts: { email: string; password: string; name: string; dept?: string; designation?: string; requestedRole?: string }) {
+export async function signUp(opts: { email: string; password: string; name: string; dept?: string; designation?: string; employeeCode?: string; requestedRole?: string }) {
   const email = opts.email.toLowerCase().trim();
   // Department is mandatory: every account must belong to a department so the
   // approval workflow can route requests and scope a department head's access.
@@ -149,6 +150,7 @@ export async function signUp(opts: { email: string; password: string; name: stri
         name: opts.name,
         dept: opts.dept ?? null,
         designation: opts.designation ?? null,
+        employee_code: opts.employeeCode ?? null,
         role: opts.requestedRole ?? "Employee",
         status: "pending",
       },
@@ -160,7 +162,9 @@ export async function signUp(opts: { email: string; password: string; name: stri
       dept: opts.dept ?? null,
       requested_role: opts.requestedRole ?? "Employee",
       status: "pending",
-      data: opts.designation ? { designation: opts.designation } : null,
+      data: (opts.designation || opts.employeeCode)
+        ? { designation: opts.designation, employeeCode: opts.employeeCode }
+        : null,
     });
   }
   // signUp() signs the new user in immediately (no email confirmation), which

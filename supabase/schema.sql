@@ -48,10 +48,13 @@ create table if not exists public.profiles (
   scope       text,
   status      text not null default 'active',  -- active | pending | disabled | deactivated | reactivating
   extra_depts text[] not null default '{}',     -- 0010: additional departments
+  employee_code text,                           -- 0015: EB-XXXX-XXX, captured at signup
   created_at  timestamptz not null default now()
 );
 alter table public.profiles
   add column if not exists extra_depts text[] not null default '{}';
+alter table public.profiles
+  add column if not exists employee_code text;
 
 -- requests: unified workflow items (kind = Payment | Budget | PO request).
 create table if not exists public.requests (
