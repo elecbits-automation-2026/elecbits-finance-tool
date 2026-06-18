@@ -272,6 +272,17 @@ export async function setEmployeeDept(authId: string, dept: string) {
   return { success: true as const };
 }
 
+// Set a department head's approval SCOPE — the mandate that routing keys off
+// (e.g. 'ODM-ALL', 'ODM-PROJECT', 'ODM-SALES', 'HR', 'BOXBUILD'). ODM and Sales
+// budgets only find an approver when their head carries the matching scope, so
+// this is required to make those departments' approval chains work. Empty → null
+// (a no-scope head simply covers their own department). Admin-only via RLS.
+export async function setEmployeeScope(authId: string, scope: string | null) {
+  const { error } = await supabase.from("profiles").update({ scope: scope || null }).eq("auth_id", authId);
+  if (error) return { success: false as const, error: error.message };
+  return { success: true as const };
+}
+
 // Set the ADDITIONAL departments an employee belongs to / heads (beyond their
 // primary `dept`). Admin-only. A department head with extra departments approves
 // and sees work across all of them; the dashboard gives them a per-department tab.
