@@ -123,9 +123,15 @@ function PICard({ pi, pos, user, onEdit, onCancel }) {
               <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-2">
                 <div className="font-bold text-fuchsia-900 mb-1">📄 Purchase Order{pi.poNumber ? ` · ${pi.poNumber}` : ""}</div>
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-                  <span>Subtotal: <strong>{(CURRENCIES.find(c => c.code === pi.currency)?.symbol || "₹")}{(pi.subtotal || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
-                  <span>GST{pi.poGstPct != null ? ` (${pi.poGstPct}%)` : ""}: <strong>{(CURRENCIES.find(c => c.code === pi.currency)?.symbol || "₹")}{(pi.totalGST || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
-                  <span className="text-fuchsia-900">Grand Total: <strong>{(CURRENCIES.find(c => c.code === pi.currency)?.symbol || "₹")}{(pi.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                  {(pi.totalGST || 0) > 0 ? (
+                    <>
+                      <span>Subtotal: <strong>{(CURRENCIES.find(c => c.code === pi.currency)?.symbol || "₹")}{(pi.subtotal || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                      <span>GST{pi.poGstPct != null ? ` (${pi.poGstPct}%)` : ""}: <strong>{(CURRENCIES.find(c => c.code === pi.currency)?.symbol || "₹")}{(pi.totalGST || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                      <span className="text-fuchsia-900">Grand Total: <strong>{(CURRENCIES.find(c => c.code === pi.currency)?.symbol || "₹")}{(pi.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                    </>
+                  ) : (
+                    <span className="text-fuchsia-900">Total Amount: <strong>{(CURRENCIES.find(c => c.code === pi.currency)?.symbol || "₹")}{(pi.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                  )}
                 </div>
                 {pi.currency !== "INR" && <div className="text-xs text-slate-500 mt-1">≈ ₹{(pi.amountINR || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })} @ ₹{pi.fxRate}/{pi.currency}</div>}
               </div>

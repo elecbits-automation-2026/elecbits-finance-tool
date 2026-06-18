@@ -45,9 +45,15 @@ export function RequestDetails({ request: r, pos_all }) {
                 <div className="sm:col-span-2 bg-teal-50 rounded p-2 border border-teal-200">
                   <div className="text-xs font-bold text-teal-900 mb-1">{refIcon} {refLabel}{refNumber ? ` · ${refNumber}` : ""}</div>
                   <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
-                    <span>Subtotal: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.subtotal || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
-                    <span>GST{refGstPct != null ? ` (${refGstPct}%)` : ""}: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.totalGST || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
-                    <span className="text-teal-900">Grand Total: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                    {(r.totalGST || 0) > 0 ? (
+                      <>
+                        <span>Subtotal: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.subtotal || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                        <span>GST{refGstPct != null ? ` (${refGstPct}%)` : ""}: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.totalGST || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                        <span className="text-teal-900">Grand Total: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                      </>
+                    ) : (
+                      <span className="text-teal-900">Total Amount: <strong>{(CURRENCIES.find(c => c.code === r.currency)?.symbol || "₹")}{(r.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                    )}
                   </div>
                 </div>
               )}

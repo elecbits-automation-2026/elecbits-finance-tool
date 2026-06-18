@@ -56,12 +56,10 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Totals come from the PO figures when a Purchase Order is provided,
-  // otherwise from the line-items table. The two paths are mutually exclusive.
-  const poSubtotalNum = parseFloat(form.poSubtotal || 0);
-  const poGstPctNum = parseFloat(form.poGstPct || 0);
-  const poGSTAmount = poSubtotalNum * (poGstPctNum / 100);
-  const poTotals = { subtotal: poSubtotalNum, totalGST: poGSTAmount, grandTotal: poSubtotalNum + poGSTAmount };
+  // A Purchase Order carries a single total amount (GST inclusive), not a
+  // subtotal + GST breakdown. The two amount paths are mutually exclusive.
+  const poTotalNum = parseFloat(form.poSubtotal || 0);
+  const poTotals = { subtotal: poTotalNum, totalGST: 0, grandTotal: poTotalNum };
   const lineTotals = computeLineItemTotals(form.lineItems);
   const totals = form.hasPO ? poTotals : lineTotals;
   const grandTotalINR = form.currency === "INR" ? totals.grandTotal : totals.grandTotal * parseFloat(form.fxRate || 0);
@@ -110,7 +108,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
 
     // Amount source: PO figures OR line items (mutually exclusive).
     if (form.hasPO) {
-      if (!form.poSubtotal || parseFloat(form.poSubtotal) <= 0) return setErr("PO subtotal must be > 0");
+      if (!form.poSubtotal || parseFloat(form.poSubtotal) <= 0) return setErr("PO total amount must be > 0");
     } else {
       if (!form.lineItems || form.lineItems.length === 0) return setErr("At least 1 line item required");
       for (let i = 0; i < form.lineItems.length; i++) {
@@ -171,8 +169,8 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
       isInternational: form.isInternational, supplierCountry: form.supplierCountry, supplierTaxId: form.supplierTaxId,
       hasPO: !!form.hasPO,
       poNumber: form.hasPO ? form.poNumber.trim() : "",
-      poSubtotal: form.hasPO ? poSubtotalNum : undefined,
-      poGstPct: form.hasPO ? poGstPctNum : undefined,
+      poSubtotal: form.hasPO ? poTotalNum : undefined,
+      poGstPct: undefined,
       lineItems: form.hasPO ? [] : JSON.parse(JSON.stringify(form.lineItems)),
       subtotal: totals.subtotal, totalGST: totals.totalGST,
       amount: totals.grandTotal, currency: form.currency, fxRate: parseFloat(form.fxRate), amountINR: grandTotalINR,
@@ -337,20 +335,12 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
           </label>
           {form.hasPO && (
             <div className="mt-3 space-y-2">
-              <div className="grid md:grid-cols-3 gap-2">
+              <div className="grid md:grid-cols-2 gap-2">
                 <div><label className="block text-xs font-semibold text-slate-700 mb-1">PO Number (optional)</label><input value={form.poNumber} onChange={(e) => setForm({ ...form, poNumber: e.target.value })} placeholder="PO ref" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm" /></div>
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1">PO Subtotal (excl GST) *</label><input type="number" value={form.poSubtotal} onChange={(e) => setForm({ ...form, poSubtotal: e.target.value, verified: false })} placeholder={currencySymbol} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm" /></div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">GST % *</label>
-                  <select value={form.poGstPct} onChange={(e) => setForm({ ...form, poGstPct: parseFloat(e.target.value), verified: false })} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm">
-                    {GST_RATES.map(r => <option key={r} value={r}>{r}%</option>)}
-                  </select>
-                </div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1">Total Amount *</label><input type="number" value={form.poSubtotal} onChange={(e) => setForm({ ...form, poSubtotal: e.target.value, verified: false })} placeholder={currencySymbol} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm" /></div>
               </div>
-              <div className="bg-white border border-fuchsia-200 rounded p-2 text-xs flex flex-wrap gap-x-4 gap-y-0.5">
-                <span>Subtotal: <strong>{currencySymbol}{poTotals.subtotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
-                <span>GST: <strong>{currencySymbol}{poTotals.totalGST.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
-                <span className="text-fuchsia-900">Grand Total: <strong>{currencySymbol}{poTotals.grandTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>{form.currency !== "INR" && ` (≈ ₹${grandTotalINR.toLocaleString("en-IN", { maximumFractionDigits: 2 })})`}</span>
+              <div className="bg-white border border-fuchsia-200 rounded p-2 text-xs">
+                <span className="text-fuchsia-900">Total Amount: <strong>{currencySymbol}{poTotals.grandTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>{form.currency !== "INR" && ` (≈ ₹${grandTotalINR.toLocaleString("en-IN", { maximumFractionDigits: 2 })})`}</span>
               </div>
             </div>
           )}
@@ -474,13 +464,13 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
             <div className="text-sm font-bold text-amber-900 mb-2">⚠ Please verify the totals before submitting</div>
             <div className="text-xs text-amber-800 mb-3 space-y-0.5">
               <div>{form.hasPO ? `From Purchase Order${form.poNumber ? ` ${form.poNumber}` : ""}` : `${form.lineItems.length} line item${form.lineItems.length !== 1 ? "s" : ""}`}</div>
-              <div>Subtotal (excl GST): <strong>{currencySymbol}{totals.subtotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></div>
-              <div>+ GST: <strong>{currencySymbol}{totals.totalGST.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></div>
-              <div className="text-base pt-1 border-t border-amber-300 mt-1">= <strong>Grand Total: {currencySymbol}{totals.grandTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>{form.currency !== "INR" && ` (≈ ₹${grandTotalINR.toLocaleString("en-IN", { maximumFractionDigits: 2 })})`}</div>
+              {!form.hasPO && <div>Subtotal (excl GST): <strong>{currencySymbol}{totals.subtotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></div>}
+              {!form.hasPO && <div>+ GST: <strong>{currencySymbol}{totals.totalGST.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></div>}
+              <div className="text-base pt-1 border-t border-amber-300 mt-1">= <strong>{form.hasPO ? "Total Amount" : "Grand Total"}: {currencySymbol}{totals.grandTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>{form.currency !== "INR" && ` (≈ ₹${grandTotalINR.toLocaleString("en-IN", { maximumFractionDigits: 2 })})`}</div>
             </div>
             <label className="flex items-start gap-2 cursor-pointer">
               <input type="checkbox" checked={form.verified} onChange={(e) => setForm({ ...form, verified: e.target.checked })} className="w-4 h-4 mt-0.5" />
-              <span className="text-xs font-semibold text-amber-900">{form.hasPO ? "I have verified the Purchase Order subtotal, GST, and grand total are correct." : "I have verified all line items, quantities, unit costs, and GST rates are correct."}</span>
+              <span className="text-xs font-semibold text-amber-900">{form.hasPO ? "I have verified the Purchase Order total amount is correct." : "I have verified all line items, quantities, unit costs, and GST rates are correct."}</span>
             </label>
           </div>
         )}

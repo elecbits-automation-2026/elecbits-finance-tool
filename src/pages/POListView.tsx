@@ -151,9 +151,15 @@ function POCard({ po, requests, pos, user, onEdit, onCancel, onClose: onCloseMan
               <div className="bg-teal-50 border border-teal-200 rounded-lg p-2">
                 <div className="font-bold text-teal-900 mb-1">🧾 Proforma Invoice{po.piNumber ? ` · ${po.piNumber}` : ""}</div>
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-                  <span>Subtotal: <strong>{(CURRENCIES.find(c => c.code === po.currency)?.symbol || "₹")}{(po.subtotal || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
-                  <span>GST{po.piGstPct != null ? ` (${po.piGstPct}%)` : ""}: <strong>{(CURRENCIES.find(c => c.code === po.currency)?.symbol || "₹")}{(po.totalGST || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
-                  <span className="text-teal-900">Grand Total: <strong>{(CURRENCIES.find(c => c.code === po.currency)?.symbol || "₹")}{(po.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                  {(po.totalGST || 0) > 0 ? (
+                    <>
+                      <span>Subtotal: <strong>{(CURRENCIES.find(c => c.code === po.currency)?.symbol || "₹")}{(po.subtotal || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                      <span>GST{po.piGstPct != null ? ` (${po.piGstPct}%)` : ""}: <strong>{(CURRENCIES.find(c => c.code === po.currency)?.symbol || "₹")}{(po.totalGST || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                      <span className="text-teal-900">Grand Total: <strong>{(CURRENCIES.find(c => c.code === po.currency)?.symbol || "₹")}{(po.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                    </>
+                  ) : (
+                    <span className="text-teal-900">Total Amount: <strong>{(CURRENCIES.find(c => c.code === po.currency)?.symbol || "₹")}{(po.amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                  )}
                 </div>
                 {po.currency !== "INR" && <div className="text-xs text-slate-500 mt-1">≈ ₹{(po.amountINR || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })} @ ₹{po.fxRate}/{po.currency}</div>}
               </div>
