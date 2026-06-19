@@ -110,16 +110,22 @@ export async function changePassword(email: string, oldPassword: string, newPass
 export async function forgotPassword(email: string) {
   const resolved = resolveLoginEmail(email);
   // Only ACTIVE accounts may reset via this flow. A deactivated/disabled/pending
-  // account must not be able to set a new password and sign back in — that would
-  // bypass admin reactivation (signIn lets 'deactivated' through for the admin
-  // view-as feature). We still return the same generic success either way so the
-  // form can't be used to probe whether an email exists or its status.
+  // account setting a new password and signing back in would bypass admin
+  // reactivation (signIn lets 'deactivated' through for the admin view-as feature).
+  // For those we show a clear status message — the login page already reveals
+  // status, so this leaks nothing new. An active account AND an unknown email both
+  // return the same generic success, so the form can't tell those two apart.
   const { data: status } = await supabase.rpc("login_status", { p_email: resolved });
-  if (status !== "active") return { success: true as const };
-  const { error } = await supabase.auth.resetPasswordForEmail(resolved, {
-    redirectTo: window.location.origin,
-  });
-  if (error) return { success: false as const, error: error.message };
+  if (status === "deactivated") return { success: false as const, error: 'Your account has been deactivated by an admin. Please contact your administrator — once they re-open it, use "Reactivate account" on the sign-in page to set a new password.' };
+  if (status === "disabled") return { success: false as const, error: "This account has been disabled. Please contact your administrator." };
+  if (status === "reactivating") return { success: false as const, error: 'Your account is being re-activated. Use "Reactivate account" on the sign-in page to set a new password.' };
+  if (status === "pending") return { success: false as const, error: "Your account is awaiting admin approval — you'll be able to sign in once it's activated." };
+  if (status === "active") {
+    const { error } = await supabase.auth.resetPasswordForEmail(resolved, {
+      redirectTo: window.location.origin,
+    });
+    if (error) return { success: false as const, error: error.message };
+  }
   return { success: true as const };
 }
 
