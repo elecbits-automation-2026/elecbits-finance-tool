@@ -227,7 +227,9 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
       {budgetType === "Project" && canRaiseProject && !projectType && (
         <div className="space-y-3">
           <div className="text-sm font-semibold text-slate-700 mb-2">Project type?</div>
-          <div className="grid md:grid-cols-3 gap-3">
+          {/* Internal / R&D is ODM-only, so it's shown only to ODM users — others
+              never see a card they can't use. */}
+          <div className={`grid gap-3 ${canRaiseRD ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
             <button onClick={() => setProjectType("Client")} className="text-left bg-white border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-2"><div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center"><Briefcase className="w-5 h-5" /></div><div className="font-bold">Client Project</div></div>
               <div className="text-xs text-slate-600 space-y-1">
@@ -236,13 +238,15 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
                 <div>✓ 20% margin enforced</div>
               </div>
             </button>
-            <button onClick={() => canRaiseRD ? setProjectType("RD") : setErr("Only ODM can raise R&D")} disabled={!canRaiseRD} className={`text-left bg-white border-2 rounded-xl p-5 ${canRaiseRD ? "border-slate-200 hover:border-fuchsia-400 hover:bg-fuchsia-50" : "border-slate-100 opacity-50 cursor-not-allowed"}`}>
-              <div className="flex items-center gap-2 mb-2"><div className="w-10 h-10 bg-fuchsia-100 text-fuchsia-600 rounded-lg flex items-center justify-center"><Target className="w-5 h-5" /></div><div className="font-bold">Internal / R&D</div></div>
-              <div className="text-xs text-slate-600 space-y-1">
-                <div>✓ ODM only</div>
-                <div>{rdAllocated != null ? `✓ Allocated this month: ₹${(rdAllocated / 1000).toFixed(0)}K (avail: ₹${(rdAvailableThisMonth / 1000).toFixed(1)}K)` : "⚠ No budget allocated this month"}</div>
-              </div>
-            </button>
+            {canRaiseRD && (
+              <button onClick={() => setProjectType("RD")} className="text-left bg-white border-2 border-slate-200 hover:border-fuchsia-400 hover:bg-fuchsia-50 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-2"><div className="w-10 h-10 bg-fuchsia-100 text-fuchsia-600 rounded-lg flex items-center justify-center"><Target className="w-5 h-5" /></div><div className="font-bold">Internal / R&D</div></div>
+                <div className="text-xs text-slate-600 space-y-1">
+                  <div>✓ ODM only</div>
+                  <div>{rdAllocated != null ? `✓ Allocated this month: ₹${(rdAllocated / 1000).toFixed(0)}K (avail: ₹${(rdAvailableThisMonth / 1000).toFixed(1)}K)` : "⚠ No budget allocated this month"}</div>
+                </div>
+              </button>
+            )}
             <button onClick={() => setProjectType("OneTime")} className="text-left bg-white border-2 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-2"><div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center"><Zap className="w-5 h-5" /></div><div className="font-bold">One-Time Budget</div></div>
               <div className="text-xs text-slate-600 space-y-1">
