@@ -27,3 +27,8 @@ supabase/.temp/
 
 # Personal daily work tracker — kept local, not pushed
 docs/daily-work-sheet/
+
+# Source data files — never commit (may contain vendor/financial data)
+*.xlsx
+*.xls
+*.csv
