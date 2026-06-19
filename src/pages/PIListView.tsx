@@ -64,8 +64,9 @@ function PICard({ pi, pos, user, onEdit, onCancel }) {
   const isApproved = pi.status === "Approved" || pi.currentStage === "Approved";
   const isCancelled = pi.status === "Cancelled" || pi.currentStage === "Cancelled";
   const isClosed = pi.status === "Closed" || pi.currentStage === "Closed";
-  const canEdit = isApproved && !isCancelled && !isReadOnly(user);
-  const canCancel = isApproved && !isCancelled && !isReadOnly(user);
+  // Policy: once approved, a PI is view-only — no edits or cancellations.
+  const canEdit = false;
+  const canCancel = false;
   const pendingEdits = pos.filter(p => p.type === "PIEdit" && p.editingPIId === pi.id && !["Approved", "Rejected", "Cancelled"].includes(p.status));
   const statusColor = isApproved ? "emerald" : isCancelled ? "slate" : isClosed ? "slate" : pi.status === "Rejected" ? "red" : "amber";
 

@@ -82,8 +82,11 @@ function POCard({ po, requests, pos, user, onEdit, onCancel, onClose: onCloseMan
   const isApproved = po.status === "Approved" || po.currentStage === "Approved";
   const isCancelled = po.status === "Cancelled" || po.currentStage === "Cancelled";
   const isClosed = po.status === "Closed" || po.currentStage === "Closed";
-  const canEdit = isApproved && !isCancelled && !isReadOnly(user);
-  const canCancel = isApproved && !isCancelled && !isReadOnly(user);
+  // Policy: once approved, a PO is view-only — no edits or cancellations.
+  // (Finance Head may still mark a settled PO as Closed; that's a lifecycle
+  // action, not a content edit.)
+  const canEdit = false;
+  const canCancel = false;
   const canManualClose = isApproved && !isCancelled && user.role === "FinanceHead" && onCloseManually;
   const pendingEdits = pos.filter(p => p.type === "POEdit" && p.editingPOId === po.id && !["Approved", "Rejected", "Cancelled"].includes(p.status));
   const statusColor = isApproved ? "emerald" : isCancelled ? "slate" : isClosed ? "slate" : po.status === "Rejected" ? "red" : "amber";
