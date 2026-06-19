@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { LogOut, Bell, Shield, Clock, FileText, CheckSquare, PiggyBank, FileSignature, Plus, Target, TrendingUp, Building2, Users, Coins } from "lucide-react";
-import { canUserActOnRequest, getUserActionsOnRequest, isReadOnly, effectiveDepts } from "../lib/access";
+import { canUserActOnRequest, getUserActionsOnRequest, isReadOnly, effectiveDepts, canRaiseAnyBudget } from "../lib/access";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 import { NotificationPanel } from "../components/NotificationPanel";
 import { TabBar } from "../components/TabBar";
@@ -143,7 +143,7 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, supplie
     if (inbox.length > 0 || user.role !== "Employee") tabs.push({ id: "inbox", label: "Action - Need to do", icon: Clock, count: inbox.length, highlight: inbox.length > 0 });
     tabs.push({ id: "my-requests", label: "My Requests", icon: FileText, count: myItems.length });
     if (canSeeMyApprovals) tabs.push({ id: "my-approvals", label: "My Approvals", icon: CheckSquare, count: myApprovalItems.length });
-    tabs.push({ id: "new-budget", label: "Raise Budget", icon: PiggyBank });
+    if (canRaiseAnyBudget(user)) tabs.push({ id: "new-budget", label: "Raise Budget", icon: PiggyBank });
     tabs.push({ id: "new-po", label: "Raise PO", icon: FileSignature });
     tabs.push({ id: "new-pi", label: "Raise PI", icon: FileText });
     tabs.push({ id: "new-payment", label: "Raise Payment", icon: Plus });

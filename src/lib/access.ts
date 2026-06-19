@@ -1,4 +1,5 @@
 // ============ ACCESS CONTROL ============
+import { NON_PROJECT_DEPTS } from "../constants";
 
 // Every department a user belongs to: their primary `dept` plus any admin-granted
 // `extraDepts`. Used by approval ROUTING (workflow.ts) so a multi-department head
@@ -53,6 +54,17 @@ export function isReadOnly(user) {
 // Single gate the UI uses to decide whether to offer the "Raise …" actions.
 export function canRaiseRequests(user) {
   return !isReadOnly(user);
+}
+
+// True when the user can raise at least one kind of budget. Used to HIDE the
+// "Raise Budget" panel from people who can't raise any (e.g. a non-project-dept
+// employee like a Finance employee) — it does NOT change permissions, just the
+// UI. Mirrors canRaiseProject/Monthly/Extension in NewBudgetRequestForm.
+export function canRaiseAnyBudget(user) {
+  if (isReadOnly(user)) return false;
+  const isHead = isHODLevel(user) || user.role === "FinanceHead";       // Monthly / Extension
+  const canProject = !NON_PROJECT_DEPTS.includes(user.dept) && (user.role === "Employee" || isHODLevel(user));
+  return isHead || canProject;
 }
 
 export function canUserActOnRequest(user, request) {
