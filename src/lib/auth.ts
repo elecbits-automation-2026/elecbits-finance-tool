@@ -109,6 +109,13 @@ export async function changePassword(email: string, oldPassword: string, newPass
 // email exists, so callers should always show the same generic confirmation.
 export async function forgotPassword(email: string) {
   const resolved = resolveLoginEmail(email);
+  // Only ACTIVE accounts may reset via this flow. A deactivated/disabled/pending
+  // account must not be able to set a new password and sign back in — that would
+  // bypass admin reactivation (signIn lets 'deactivated' through for the admin
+  // view-as feature). We still return the same generic success either way so the
+  // form can't be used to probe whether an email exists or its status.
+  const { data: status } = await supabase.rpc("login_status", { p_email: resolved });
+  if (status !== "active") return { success: true as const };
   const { error } = await supabase.auth.resetPasswordForEmail(resolved, {
     redirectTo: window.location.origin,
   });
