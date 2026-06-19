@@ -10,23 +10,12 @@ export function effectiveDepts(user) {
   return user.dept ? [user.dept, ...extra.filter(d => d !== user.dept)] : extra;
 }
 
-// A department head's visibility is driven by their `scope` (a per-user mandate),
-// not their identity — sub-department scoping (ODM-PROJECT sees ODM projects only) or
-// a sanctioned cross-department bridge (ODM-SALES, the Sales head, also handles ODM
-// work). Any head with no special scope is held strictly to their own department, so
-// an account the admin creates works without touching this file.
+// A department head sees their own department's requests, full stop — pure
+// role + department, no scopes or cross-department bridges. With no department
+// assigned they see nothing until an admin sets one (the Admin Console flags
+// such accounts).
 function headSeesRequest(user, request) {
-  switch (user.scope) {
-    case "ODM-ALL": return request.dept === "ODM";
-    case "ODM-PROJECT": return request.dept === "ODM" && request.isProject === true;
-    case "ODM-SALES": return request.dept === "ODM" || request.dept === "Sales";
-    case "HR": return request.dept === "HR";
-    case "BOXBUILD": return request.dept === "Box Build";
-    // No special scope (incl. the Box Build mid-approver): own department only. With
-    // no department assigned they see nothing until an admin sets one (the Admin
-    // Console flags such accounts).
-    default: return Boolean(user.dept) && request.dept === user.dept;
-  }
+  return Boolean(user.dept) && request.dept === user.dept;
 }
 
 export function canUserSeeRequest(user, request) {
@@ -87,11 +76,9 @@ export function canUserActOnRequest(user, request) {
   if (stage === "BoxBuildMid" && user.role === "BoxBuildMidApprover") return true;
   if (stage === "DeptApproval") {
     if (request.selectedApprovers && request.selectedApprovers.includes(user.id)) {
-      // A department head may only approve/reject work in their OWN department. Heads
-      // with a scope keep their established routing (incl. the sanctioned ODM-SALES
-      // bridge); a head with no scope is held strictly to a matching department. This
-      // is what stops, e.g., an ODM head acting on a Box Build employee's request.
-      if (isHODLevel(user) && !user.scope && user.dept && request.dept !== user.dept) return false;
+      // A department head may only approve/reject work in their OWN department.
+      // This is what stops, e.g., an ODM head acting on a Box Build employee's request.
+      if (isHODLevel(user) && user.dept && request.dept !== user.dept) return false;
       const hasApproved = request.history.some(h => h.byId === user.id && h.action.includes("Approved"));
       if (hasApproved) return false;
       return true;

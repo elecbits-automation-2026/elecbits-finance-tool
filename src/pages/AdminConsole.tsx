@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { LogOut, ShieldCheck, RefreshCw, Mail, Clock, Search, Users, CheckCircle2, Ban, KeyRound, Copy, Check, RotateCcw, Hourglass, X, Trash2, AlertTriangle } from "lucide-react";
-import { listEmployees, listRoles, setEmployeeRole, setEmployeeDept, setEmployeeScope, setEmployeeExtraDepts, setEmployeeStatus, openReactivation, deactivateEmployee, deleteEmployee, getAccessPasswords } from "../lib/auth";
+import { listEmployees, listRoles, setEmployeeRole, setEmployeeDept, setEmployeeExtraDepts, setEmployeeStatus, openReactivation, deactivateEmployee, deleteEmployee, getAccessPasswords } from "../lib/auth";
 import { DEPARTMENTS } from "../constants";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 
@@ -86,18 +86,6 @@ export function AdminConsole({ user, onLogout, showToast }) {
     if (!r.success) { if (showToast) showToast(`Could not update department: ${r.error}`, "error"); return; }
     setEmployees((prev) => prev.map((e) => (e.authId === emp.authId ? { ...e, dept } : e)));
     if (showToast) showToast(`${emp.name} is now in ${dept}.`, "success");
-  }
-
-  // Set a department head's approval scope (routing mandate). Required for ODM
-  // (ODM-ALL / ODM-PROJECT) and Sales (ODM-SALES) heads, otherwise budgets in
-  // those departments find no approver.
-  async function changeScope(emp, scope) {
-    setBusyId(emp.authId);
-    const r = await setEmployeeScope(emp.authId, scope || null);
-    setBusyId(null);
-    if (!r.success) { if (showToast) showToast(`Could not update scope: ${r.error}`, "error"); return; }
-    setEmployees((prev) => prev.map((e) => (e.authId === emp.authId ? { ...e, scope: scope || undefined } : e)));
-    if (showToast) showToast(`Updated approval scope for ${emp.name}.`, "success");
   }
 
   // Add or remove an ADDITIONAL department for an employee (beyond their primary
@@ -315,21 +303,6 @@ export function AdminConsole({ user, onLogout, showToast }) {
                         {emp.dept && !DEPARTMENTS.includes(emp.dept) && <option value={emp.dept}>{emp.dept}</option>}
                       </select>
                     </div>
-                    {emp.role === "DeptApprover" && (
-                      <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Approval scope</label>
-                        <select value={emp.scope || ""} disabled={busy} onChange={(e) => changeScope(emp, e.target.value)} className="text-xs px-2 py-1.5 border border-slate-300 rounded-lg bg-white disabled:opacity-50 min-w-[170px]">
-                          <option value="">(none) — own department</option>
-                          <option value="ODM-ALL">ODM-ALL — all ODM budgets</option>
-                          <option value="ODM-PROJECT">ODM-PROJECT — ODM projects only</option>
-                          <option value="ODM-SALES">ODM-SALES — Sales (ODM bridge)</option>
-                          <option value="HR">HR</option>
-                          <option value="BOXBUILD">BOXBUILD</option>
-                          {/* Surface any legacy scope not in the list so it isn't silently lost. */}
-                          {emp.scope && !["ODM-ALL", "ODM-PROJECT", "ODM-SALES", "HR", "BOXBUILD"].includes(emp.scope) && <option value={emp.scope}>{emp.scope}</option>}
-                        </select>
-                      </div>
-                    )}
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Additional departments</label>
                       <div className="flex items-center gap-1 flex-wrap min-w-[160px]">

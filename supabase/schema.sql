@@ -404,26 +404,12 @@ begin
   elsif req_dept = 'Finance' then
     select coalesce(array_agg(public.app_user_id(p)), '{}') into ids
       from public.profiles p where p.status = 'active' and p.role = 'FinanceHead';
-  elsif req_dept in ('ODM', 'Sales') and req_scope = 'ODM-SALES' then
-    select coalesce(array_agg(public.app_user_id(p)), '{}') into ids
-      from public.profiles p where p.status = 'active' and p.role = 'DeptApprover' and p.scope = 'ODM-SALES';
-  elsif req_dept = 'Sales' then
-    -- Sales routes to the Sales head (ODM-SALES scope), never the ODM heads.
-    select coalesce(array_agg(public.app_user_id(p)), '{}') into ids
-      from public.profiles p where p.status = 'active' and p.role = 'DeptApprover' and p.scope = 'ODM-SALES';
-  elsif req_dept = 'ODM' then
-    select coalesce(array_agg(public.app_user_id(p)), '{}') into ids
-      from public.profiles p where p.status = 'active' and p.role = 'DeptApprover'
-      and (p.scope = 'ODM-ALL' or (is_project and p.scope = 'ODM-PROJECT'));
   else
+    -- Every other department: its own DeptApprover(s). Pure role + department —
+    -- no scopes or cross-department bridges.
     select coalesce(array_agg(public.app_user_id(p)), '{}') into ids
       from public.profiles p where p.status = 'active' and p.role = 'DeptApprover'
-      and case coalesce(p.scope, '')
-            when 'HR' then req_dept = 'HR'
-            when 'BOXBUILD' then req_dept = 'Box Build'
-            when '' then req_dept = any(public.user_depts(p))
-            else false
-          end;
+      and req_dept = any(public.user_depts(p));
   end if;
   return ids;
 end $$;
@@ -447,8 +433,8 @@ begin
   if stage = 'DeptApproval' then
     sa := coalesce(array(select jsonb_array_elements_text(b->'selectedApprovers')), '{}');
     if not (uid = any(sa)) then return false; end if;
-    -- An unscoped head is held strictly to their own departments.
-    if p.role in ('DeptApprover','BoxBuildMidApprover') and p.scope is null
+    -- A head is held strictly to their own departments (pure role + dept).
+    if p.role in ('DeptApprover','BoxBuildMidApprover')
        and not ((b->>'dept') = any(public.user_depts(p))) then return false; end if;
     -- One approval per person at the consensus stage.
     if exists (select 1 from jsonb_array_elements(coalesce(b->'history','[]'::jsonb)) h
@@ -795,8 +781,8 @@ create trigger budgets_guard_del after delete on public.budgets
 -- ---------------------------------------------------------------- policies
 
 -- May the caller read this budget row? Company-wide roles see all; everyone
--- else sees their own departments' rows, their own requests, and what their
--- scope sanctions (the ODM/Sales bridge).
+-- else sees their own departments' rows and their own requests. Pure role +
+-- department — no scope/bridge.
 create or replace function public.can_select_budget(b_dept text, b_requester text)
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (
@@ -804,9 +790,7 @@ returns boolean language sql stable security definer set search_path = public as
     where p.auth_id = auth.uid()
       and ( p.role in ('CEO','VP','FinanceHead','Accountant','SuperManager','Admin')
          or b_requester = public.app_user_id(p)
-         or b_dept = any(public.user_depts(p))
-         or (p.scope = 'ODM-SALES' and b_dept in ('ODM','Sales'))
-         or (p.scope in ('ODM-ALL','ODM-PROJECT') and b_dept = 'ODM') )
+         or b_dept = any(public.user_depts(p)) )
   );
 $$;
 

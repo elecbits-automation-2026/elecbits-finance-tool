@@ -10,22 +10,6 @@ import { effectiveDepts } from "./access";
 // no special scope simply covers their own department.
 const deptApprovers = () => getRoster().filter(u => u.role === "DeptApprover");
 
-// Does this approver's scope cover `dept`? Only reached from the DEFAULT branch
-// of getEligibleDeptApprovers — i.e. for departments OTHER than ODM and Sales,
-// which are routed by their own dedicated branches above. So ODM/Sales scopes
-// are intentionally absent here: an ODM-scoped head never approves an HR /
-// Product / etc. budget, which is exactly what the final `!approver.scope`
-// guard yields (an unrecognised or ODM/Sales scope covers nothing here).
-function approverScopeCovers(approver, dept) {
-  switch (approver.scope) {
-    case "HR": return dept === "HR";
-    case "BOXBUILD": return dept === "Box Build";
-    // No special scope: the approver covers any department they belong to (primary
-    // or an admin-granted extra), so a multi-department head is routed work in each.
-    default: return !approver.scope && effectiveDepts(approver).includes(dept);
-  }
-}
-
 export function getEligibleDeptApprovers(requester, selectedType, isProject) {
   const dept = requester.dept;
   // Executive / Management self-approval chains are purely role-based.
@@ -37,23 +21,9 @@ export function getEligibleDeptApprovers(requester, selectedType, isProject) {
   if (dept === "Management") return getRoster().filter(u => u.role === "SuperManager" && u.id !== requester.id);
   // Finance routes to the Finance Head.
   if (dept === "Finance") return getRoster().filter(u => u.role === "FinanceHead");
-  // A requester carrying the ODM-SALES bridge scope routes to the ODM-SALES head only.
-  if ((dept === "ODM" || dept === "Sales") && requester.scope === "ODM-SALES") {
-    return deptApprovers().filter(u => u.scope === "ODM-SALES");
-  }
-  // Sales: routes to the Sales head, who carries the ODM-SALES scope. Sales work is
-  // NOT approved by the ODM-ALL / ODM-PROJECT heads — only the ODM bridge runs the
-  // other direction (the Sales head also covers ODM). This matches getDeptHeadsForDept,
-  // which already notifies the ODM-SALES head for Sales activity.
-  if (dept === "Sales") {
-    return deptApprovers().filter(u => u.scope === "ODM-SALES");
-  }
-  // ODM: the all-ODM head, plus the project head when this is a project.
-  if (dept === "ODM") {
-    return deptApprovers().filter(u => u.scope === "ODM-ALL" || (isProject && u.scope === "ODM-PROJECT"));
-  }
-  // Every other department: the DeptApprover(s) whose mandate covers it.
-  return deptApprovers().filter(u => approverScopeCovers(u, dept));
+  // Every other department: its own DeptApprover(s) — the head(s) whose
+  // department(s) include it. Pure role + department, no special scopes/bridges.
+  return deptApprovers().filter(u => effectiveDepts(u).includes(dept));
 }
 
 export function needsBoxBuildMidApproval(requester) {
@@ -168,9 +138,7 @@ export function getStageLabel(stage, kind = "Payment") {
 // Heads to notify for a department's activity. Like getEligibleDeptApprovers but also
 // includes the Box Build mid-approver (Delivery Head) so they stay in the loop.
 export function getDeptHeadsForDept(dept, isProject = false) {
-  if (dept === "ODM") return deptApprovers().filter(u => u.scope === "ODM-ALL" || (isProject && u.scope === "ODM-PROJECT"));
-  if (dept === "Sales") return deptApprovers().filter(u => u.scope === "ODM-SALES");
-  if (dept === "Box Build") return getRoster().filter(u => (u.role === "DeptApprover" && u.scope === "BOXBUILD") || u.role === "BoxBuildMidApprover");
-  if (dept === "HR") return deptApprovers().filter(u => u.scope === "HR");
-  return deptApprovers().filter(u => effectiveDepts(u).includes(dept));
+  const heads = deptApprovers().filter(u => effectiveDepts(u).includes(dept));
+  if (dept === "Box Build") return [...heads, ...getRoster().filter(u => u.role === "BoxBuildMidApprover")];
+  return heads;
 }

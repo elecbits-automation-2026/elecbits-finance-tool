@@ -22,7 +22,6 @@ function toUser(profile: any) {
     designation: profile.designation,
     employeeCode: profile.employee_code ?? undefined,
     role: profile.role,
-    scope: profile.scope ?? undefined,
     status: profile.status,
   };
 }
@@ -268,17 +267,6 @@ export async function setEmployeeRole(authId: string, role: string) {
 // (re)assign it any time — e.g. to fix accounts that signed up without one.
 export async function setEmployeeDept(authId: string, dept: string) {
   const { error } = await supabase.from("profiles").update({ dept }).eq("auth_id", authId);
-  if (error) return { success: false as const, error: error.message };
-  return { success: true as const };
-}
-
-// Set a department head's approval SCOPE — the mandate that routing keys off
-// (e.g. 'ODM-ALL', 'ODM-PROJECT', 'ODM-SALES', 'HR', 'BOXBUILD'). ODM and Sales
-// budgets only find an approver when their head carries the matching scope, so
-// this is required to make those departments' approval chains work. Empty → null
-// (a no-scope head simply covers their own department). Admin-only via RLS.
-export async function setEmployeeScope(authId: string, scope: string | null) {
-  const { error } = await supabase.from("profiles").update({ scope: scope || null }).eq("auth_id", authId);
   if (error) return { success: false as const, error: error.message };
   return { success: true as const };
 }
