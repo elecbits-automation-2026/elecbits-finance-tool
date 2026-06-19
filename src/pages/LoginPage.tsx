@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { XCircle, CheckCircle } from "lucide-react";
-import { signUp, requestReactivation, changePassword, forgotPassword } from "../lib/auth";
+import { signUp, changePassword, forgotPassword } from "../lib/auth";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 
 const DEPARTMENTS = ["ODM", "Sales", "Box Build", "HR", "Product", "Marketing", "Finance", "Management", "Executive"];
 
-type Mode = "signin" | "signup" | "reactivate" | "reset" | "forgot";
+type Mode = "signin" | "signup" | "reset" | "forgot";
 
 // ============ LOGIN ============
 export function LoginPage({ onLogin }) {
@@ -55,22 +55,6 @@ export function LoginPage({ onLogin }) {
     setMode("signin");
   }
 
-  // Re-activation: an account the admin re-opened (status 'reactivating') sets a
-  // brand-new password here. It then moves to 'pending' for admin approval.
-  async function submitReactivate() {
-    setError("");
-    setNotice("");
-    if (!email) { setError("Please enter your email"); return; }
-    if (password.length < 6) { setError("Password must be at least 6 characters"); return; }
-    setBusy(true);
-    const r = await requestReactivation(email, password);
-    setBusy(false);
-    if (!r.success) { setError(r.error); return; }
-    setNotice("New password set — your account is now awaiting admin approval. You'll be able to sign in once an admin approves it.");
-    setPassword("");
-    setMode("signin");
-  }
-
   // "Reset" — change the password when the user knows their current one. Verifies
   // the current password, sets the new one, and returns them to sign in with it.
   async function submitReset() {
@@ -106,7 +90,6 @@ export function LoginPage({ onLogin }) {
   function onEnter() {
     if (mode === "signin") submit();
     else if (mode === "signup") submitSignup();
-    else if (mode === "reactivate") submitReactivate();
     else if (mode === "reset") submitReset();
     else if (mode === "forgot") submitForgot();
   }
@@ -114,14 +97,12 @@ export function LoginPage({ onLogin }) {
   const title =
     mode === "signin" ? "Welcome back" :
     mode === "signup" ? "Create your account" :
-    mode === "reactivate" ? "Reactivate your account" :
     mode === "reset" ? "Change your password" :
     "Reset your password";
 
   const subtitle =
     mode === "signin" ? "Sign in with your @elecbits.in email" :
     mode === "signup" ? "Sign up — your account will be reviewed by an admin before access is granted" :
-    mode === "reactivate" ? "Set a new password for an account your admin has re-opened. It'll await admin approval before you can sign in." :
     mode === "reset" ? "Enter your current password and choose a new one." :
     "Enter your email and we'll send you a secure link to set a new password.";
 
@@ -165,7 +146,7 @@ export function LoginPage({ onLogin }) {
             </div>
             {mode !== "forgot" && (
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">{mode === "reactivate" ? "New Password" : mode === "reset" ? "Current Password" : "Password"}</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">{mode === "reset" ? "Current Password" : "Password"}</label>
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onEnter()} placeholder={mode === "signin" ? "Enter password" : mode === "reset" ? "Enter current password" : "At least 6 characters"} className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             )}
@@ -181,8 +162,6 @@ export function LoginPage({ onLogin }) {
               <button onClick={submit} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2.5 rounded-lg">Sign In</button>
             ) : mode === "signup" ? (
               <button onClick={submitSignup} disabled={busy} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2.5 rounded-lg disabled:opacity-60">{busy ? "Creating account…" : "Create Account"}</button>
-            ) : mode === "reactivate" ? (
-              <button onClick={submitReactivate} disabled={busy} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2.5 rounded-lg disabled:opacity-60">{busy ? "Setting password…" : "Set Password & Request Approval"}</button>
             ) : mode === "reset" ? (
               <button onClick={submitReset} disabled={busy} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2.5 rounded-lg disabled:opacity-60">{busy ? "Updating…" : "Update Password"}</button>
             ) : (
@@ -197,7 +176,6 @@ export function LoginPage({ onLogin }) {
                     <button onClick={() => switchMode("forgot")} className="text-blue-600 hover:text-blue-700 font-semibold">Forgot password?</button>
                   </div>
                   <div>New here? <button onClick={() => switchMode("signup")} className="text-blue-600 hover:text-blue-700 font-semibold">Create an account</button></div>
-                  <div>Account re-opened by your admin? <button onClick={() => switchMode("reactivate")} className="text-blue-600 hover:text-blue-700 font-semibold">Reactivate account</button></div>
                 </>
               ) : mode === "signup" ? (
                 <>Already have an account? <button onClick={() => switchMode("signin")} className="text-blue-600 hover:text-blue-700 font-semibold">Sign in</button></>

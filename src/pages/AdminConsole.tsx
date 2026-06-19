@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { LogOut, ShieldCheck, RefreshCw, Mail, Clock, Search, Users, CheckCircle2, Ban, KeyRound, Copy, Check, RotateCcw, Hourglass, X, Trash2, AlertTriangle } from "lucide-react";
-import { listEmployees, listRoles, setEmployeeRole, setEmployeeDept, setEmployeeExtraDepts, setEmployeeStatus, openReactivation, deactivateEmployee, deleteEmployee, getAccessPasswords } from "../lib/auth";
+import { listEmployees, listRoles, setEmployeeRole, setEmployeeDept, setEmployeeExtraDepts, setEmployeeStatus, reactivateEmployee, deactivateEmployee, deleteEmployee, getAccessPasswords } from "../lib/auth";
 import { DEPARTMENTS } from "../constants";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 
@@ -119,27 +119,18 @@ export function AdminConsole({ user, onLogout, showToast }) {
     if (showToast) showToast(`${emp.name} deactivated. Access password is shown on their card.`, "info");
   }
 
-  // Open a deactivated/disabled account for reactivation. The user must then set
-  // a new password from the login page before the admin approves (below).
+  // Re-activate a deactivated/disabled account → straight back to active. Their
+  // password was reset on deactivation, so they regain access via "Forgot
+  // Password" on the login page (which works for active accounts).
   async function reopen(emp) {
-    if (!window.confirm(`Re-activate ${emp.name}?\n\nThey'll be asked to set a NEW password from the login page ("Reactivate account"). It then comes back to you here to approve before they can sign in.`)) return;
+    if (!window.confirm(`Re-activate ${emp.name}?\n\nThe account becomes active immediately. They must use "Forgot Password" on the login page to set a new password before signing in.`)) return;
     setBusyId(emp.authId);
-    const r = await openReactivation(emp.authId);
+    const r = await reactivateEmployee(emp.authId);
     setBusyId(null);
-    if (!r.success) { if (showToast) showToast(`Could not start re-activation: ${r.error}`, "error"); return; }
-    patchStatus(emp, "reactivating");
+    if (!r.success) { if (showToast) showToast(`Could not re-activate: ${r.error}`, "error"); return; }
+    patchStatus(emp, "active");
     setAccessMap((prev) => { const n = { ...prev }; delete n[emp.authId]; return n; });
-    if (showToast) showToast(`${emp.name} can now set a new password from the login page. Approve it here after.`, "info");
-  }
-
-  // Cancel an in-progress reactivation, sending the account back to deactivated.
-  async function cancelReactivation(emp) {
-    setBusyId(emp.authId);
-    const r = await setEmployeeStatus(emp.authId, "deactivated");
-    setBusyId(null);
-    if (!r.success) { if (showToast) showToast(`Could not cancel: ${r.error}`, "error"); return; }
-    patchStatus(emp, "deactivated");
-    if (showToast) showToast(`Re-activation cancelled for ${emp.name}.`, "info");
+    if (showToast) showToast(`${emp.name} re-activated. Ask them to use "Forgot Password" to set a new password.`, "success");
   }
 
   // Approve a pending account (new signup OR a reactivation) → active.
@@ -278,12 +269,6 @@ export function AdminConsole({ user, onLogout, showToast }) {
                         <span className="text-[10px] text-orange-600/80 w-full">Sign in with <span className="font-semibold">{emp.email}</span> and this password to view their activity.</span>
                       </div>
                     )}
-                    {emp.status === "reactivating" && (
-                      <div className="mt-2 flex items-center gap-2 flex-wrap bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5">
-                        <Hourglass className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
-                        <span className="text-[10px] text-sky-700">Waiting for <span className="font-semibold">{emp.name}</span> to set a new password from the login page. It'll return here as <span className="font-semibold">pending</span> for you to approve.</span>
-                      </div>
-                    )}
                   </div>
                   <div className="flex items-center gap-2 justify-end flex-wrap">
                     <div>
@@ -324,14 +309,9 @@ export function AdminConsole({ user, onLogout, showToast }) {
                           <Ban className="w-3.5 h-3.5" />Deactivate
                         </button>
                       )}
-                      {(emp.status === "deactivated" || emp.status === "disabled") && (
+                      {(emp.status === "deactivated" || emp.status === "disabled" || emp.status === "reactivating") && (
                         <button onClick={() => reopen(emp)} disabled={busy} className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50 bg-sky-600 hover:bg-sky-700 text-white">
                           <RotateCcw className="w-3.5 h-3.5" />Re-activate
-                        </button>
-                      )}
-                      {emp.status === "reactivating" && (
-                        <button onClick={() => cancelReactivation(emp)} disabled={busy} className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600">
-                          <X className="w-3.5 h-3.5" />Cancel
                         </button>
                       )}
                       {emp.status === "pending" && (
