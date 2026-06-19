@@ -64,8 +64,11 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
   }
 
   const canRaiseProject = !NON_PROJECT_DEPTS.includes(user.dept) && (user.role === "Employee" || isHODLevel(user) || user.role === "DeptApprover");
-  const canRaiseMonthly = isHODLevel(user);
-  const canRaiseExtension = isHODLevel(user);
+  // The Finance department's head carries the FinanceHead role (not DeptApprover),
+  // so include it here — otherwise the Finance head can't raise the Monthly/
+  // Extension budgets the non-project-dept banner says Finance can.
+  const canRaiseMonthly = isHODLevel(user) || user.role === "FinanceHead";
+  const canRaiseExtension = isHODLevel(user) || user.role === "FinanceHead";
   const canRaiseRD = user.dept === "ODM" && (user.role === "Employee" || isHODLevel(user));
 
   // Monthly budgets are not project work; Project and Extension budgets are. This must
@@ -164,7 +167,12 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
     const initialStage = needsMidStage
       ? "BoxBuildMid"
       : (selectedApproverIds.length === 0
-          ? computeNextStage({ kind: "Budget", amountINR, type: budgetType }, "DeptApproval", null)
+          // A Finance Head raising their own budget can't be approved at the
+          // Finance stage (they are it), so escalate straight to VP (then CEO by
+          // amount). Any other sole head escalates to the next authority by amount.
+          ? (user.role === "FinanceHead"
+              ? "VP"
+              : computeNextStage({ kind: "Budget", amountINR, type: budgetType }, "DeptApproval", null))
           : "DeptApproval");
 
     // One-time budgets carry no user-entered project id/name; auto-generate a

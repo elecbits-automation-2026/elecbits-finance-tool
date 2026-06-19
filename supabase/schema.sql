@@ -548,7 +548,7 @@ begin
       raise exception 'budgets: isProject flag does not match budget type';
     end if;
 
-    if new.type in ('Monthly','Extension') and p.role not in ('DeptApprover','BoxBuildMidApprover') then
+    if new.type in ('Monthly','Extension') and p.role not in ('DeptApprover','BoxBuildMidApprover','FinanceHead') then
       raise exception 'budgets: only Department Heads may raise % budgets', new.type;
     end if;
     if new.type = 'Project' then
@@ -640,8 +640,14 @@ begin
       if not (uid = any(public.budget_eligible_approvers(uid, req_dept, p.role, p.scope, is_proj))) then
         raise exception 'budgets: no approver is configured for department %', req_dept;
       end if;
-      -- The request starts at the next authority for the amount.
-      if stage is distinct from public.budget_next_stage(amt, 'DeptApproval') then
+      -- The request starts at the next authority. A Finance Head can't be
+      -- approved at the Finance stage (they ARE it, and can't self-approve), so
+      -- their own budget escalates straight to VP (then CEO by amount).
+      if p.role = 'FinanceHead' then
+        if stage is distinct from 'VP' then
+          raise exception 'budgets: a Finance Head''s own budget must start at VP';
+        end if;
+      elsif stage is distinct from public.budget_next_stage(amt, 'DeptApproval') then
         raise exception 'budgets: empty approver list requires escalated initial stage %',
           public.budget_next_stage(amt, 'DeptApproval');
       end if;
