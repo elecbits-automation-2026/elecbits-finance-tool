@@ -60,9 +60,15 @@ export async function signIn(email: string, password: string) {
     // precise message instead of a raw "Invalid login credentials".
     const { data: status } = await supabase.rpc("login_status", { p_email: resolved });
     if (status === "deactivated") return { success: false as const, error: "Your account has been deactivated. Please contact your administrator." };
-    if (status === "reactivating") return { success: false as const, error: 'Your account is being re-activated. Use "Reactivate account" to set a new password, then wait for admin approval.' };
     if (status === "disabled") return { success: false as const, error: "This account has been disabled." };
     if (status === "pending") return { success: false as const, error: "Your account is awaiting admin approval." };
+    if (status === "active") {
+      // Active account + wrong password — this may be a just-re-activated account
+      // whose password was reset on deactivation, so the old one no longer works.
+      // Tell them why instead of a bare "invalid credentials".
+      const { data: mustReset } = await supabase.rpc("login_must_reset", { p_email: resolved });
+      if (mustReset) return { success: false as const, error: 'Your account was deactivated by an admin and has now been re-activated. Your old password no longer works — use "Forgot Password" below to set a new one.' };
+    }
     return { success: false as const, error: error.message };
   }
 
@@ -77,6 +83,10 @@ export async function signIn(email: string, password: string) {
   // reset on deactivation, so a successful sign-in here can only be the admin
   // using the generated access password to view this user's activity.
 
+  // They signed in with a valid password, so any "must reset" flag is satisfied.
+  if (profile.must_reset_password) {
+    await supabase.from("profiles").update({ must_reset_password: false }).eq("auth_id", data.user.id);
+  }
   return { success: true as const, user: toUser(profile) };
 }
 
@@ -138,6 +148,10 @@ export async function completePasswordRecovery(newPassword: string) {
     await supabase.auth.signOut();
     return { success: false as const, error: error.message };
   }
+  // They've set a fresh password — clear any "must reset" flag (set on
+  // re-activation) before dropping the recovery session.
+  const { data: sess } = await supabase.auth.getUser();
+  if (sess?.user) await supabase.from("profiles").update({ must_reset_password: false }).eq("auth_id", sess.user.id);
   await supabase.auth.signOut();
   return { success: true as const };
 }
@@ -310,7 +324,9 @@ export async function setEmployeeStatus(authId: string, status: "active" | "disa
 // deactivation, so they regain access by using "Forgot Password" to set a new
 // one (active accounts are allowed through that flow).
 export async function reactivateEmployee(authId: string) {
-  const { error } = await supabase.from("profiles").update({ status: "active" }).eq("auth_id", authId);
+  // Flag must_reset_password so the login page can tell the user their old
+  // password no longer works (it was reset on deactivation).
+  const { error } = await supabase.from("profiles").update({ status: "active", must_reset_password: true }).eq("auth_id", authId);
   if (error) return { success: false as const, error: error.message };
   // Account is active again — drop the admin's view-as password for it.
   await supabase.from("admin_access").delete().eq("auth_id", authId);

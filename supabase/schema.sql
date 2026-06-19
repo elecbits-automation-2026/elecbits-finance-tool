@@ -49,12 +49,15 @@ create table if not exists public.profiles (
   status      text not null default 'active',  -- active | pending | disabled | deactivated | reactivating
   extra_depts text[] not null default '{}',     -- 0010: additional departments
   employee_code text,                           -- 0015: EB-XXXX-XXX, captured at signup
+  must_reset_password boolean not null default false,  -- 0018: set on re-activation (password was reset)
   created_at  timestamptz not null default now()
 );
 alter table public.profiles
   add column if not exists extra_depts text[] not null default '{}';
 alter table public.profiles
   add column if not exists employee_code text;
+alter table public.profiles
+  add column if not exists must_reset_password boolean not null default false;
 
 -- requests: unified workflow items (kind = Payment | Budget | PO request).
 create table if not exists public.requests (
@@ -292,6 +295,21 @@ stable
 set search_path = public
 as $$
   select status from public.profiles
+  where email = lower(trim(p_email))
+  limit 1;
+$$;
+
+-- login_must_reset(email): true when the account is flagged to set a new password
+-- (e.g. just re-activated after deactivation, which reset the password). Lets the
+-- login page tell a re-activated user their old password is gone. Anon-callable.
+create or replace function public.login_must_reset(p_email text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select coalesce(must_reset_password, false) from public.profiles
   where email = lower(trim(p_email))
   limit 1;
 $$;
