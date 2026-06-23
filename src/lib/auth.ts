@@ -168,7 +168,7 @@ export async function signUp(opts: { email: string; password: string; name: stri
 
   const authId = data.user?.id;
   if (authId) {
-    await supabase.from("profiles").upsert(
+    const { error: upErr } = await supabase.from("profiles").upsert(
       {
         auth_id: authId,
         email,
@@ -181,6 +181,12 @@ export async function signUp(opts: { email: string; password: string; name: stri
       },
       { onConflict: "auth_id" }
     );
+    if (upErr) {
+      await supabase.auth.signOut();
+      // 23505 = unique violation → the employee code is already taken.
+      if (upErr.code === "23505") return { success: false as const, error: "This Employee Code is already in use. Please use your own assigned code." };
+      return { success: false as const, error: upErr.message };
+    }
     await supabase.from("pending_signups").insert({
       email,
       name: opts.name,

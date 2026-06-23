@@ -58,6 +58,8 @@ alter table public.profiles
   add column if not exists employee_code text;
 alter table public.profiles
   add column if not exists must_reset_password boolean not null default false;
+create unique index if not exists profiles_employee_code_uniq
+  on public.profiles (employee_code) where employee_code is not null;
 
 -- requests: unified workflow items (kind = Payment | Budget | PO request).
 create table if not exists public.requests (
@@ -896,3 +898,54 @@ create policy requests_select on public.requests
 create policy requests_insert on public.requests for insert to authenticated with check (true);
 create policy requests_update on public.requests for update to authenticated using (true) with check (true);
 create policy requests_delete on public.requests for delete to authenticated using (true);
+
+-- ------------------------------------------------ workflow-row guard (requests/pos)
+-- Targeted integrity guard (NOT the full approval workflow). INSERT: requesterId
+-- must be the caller and the row may not be born finalised. DELETE: only your own
+-- non-finalised rows. UPDATE: not constrained here (per-stage authorization stays
+-- client-enforced). Permissive RLS + this trigger mirrors the budgets pattern.
+create or replace function public.workflow_row_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare p public.profiles; uid text; d jsonb;
+begin
+  if auth.uid() is null then return coalesce(new, old); end if;
+  select * into p from public.profiles where auth_id = auth.uid();
+  if p is null then raise exception 'workflow: no profile for caller'; end if;
+  if p.role = 'Admin' then return coalesce(new, old); end if;
+  uid := public.app_user_id(p);
+
+  if tg_op = 'DELETE' then
+    d := old.data;
+    if old.requester_id is distinct from uid then
+      raise exception 'workflow: you may only delete your own rows';
+    end if;
+    if coalesce(d->>'status','') in ('Paid','Approved','Closed') then
+      raise exception 'workflow: a finalised row may not be deleted';
+    end if;
+    return old;
+  end if;
+
+  if tg_op = 'INSERT' then
+    d := new.data;
+    if new.requester_id is distinct from uid or (d->>'requesterId') is distinct from uid then
+      raise exception 'workflow: requesterId must be the caller';
+    end if;
+    if coalesce(d->>'status','') in ('Paid','Approved','Closed')
+       or coalesce(d->>'currentStage','') in ('Paid','Approved','Closed','Active') then
+      raise exception 'workflow: a new row may not start in a finalised state';
+    end if;
+    return new;
+  end if;
+
+  return new;  -- UPDATE: not guarded here
+end $$;
+
+drop trigger if exists requests_guard_ins on public.requests;
+drop trigger if exists requests_guard_del on public.requests;
+create trigger requests_guard_ins after insert on public.requests for each row execute function public.workflow_row_guard();
+create trigger requests_guard_del after delete on public.requests for each row execute function public.workflow_row_guard();
+
+drop trigger if exists pos_guard_ins on public.pos;
+drop trigger if exists pos_guard_del on public.pos;
+create trigger pos_guard_ins after insert on public.pos for each row execute function public.workflow_row_guard();
+create trigger pos_guard_del after delete on public.pos for each row execute function public.workflow_row_guard();

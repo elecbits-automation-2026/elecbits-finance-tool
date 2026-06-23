@@ -17,7 +17,7 @@ export function PIListView({ user, pos, requests, budgets, suppliers, savePOs, s
     return (
       <div>
         <button onClick={() => setEditTarget(null)} className="mb-3 text-sm text-blue-600 hover:text-blue-700 font-medium">← Back to PIs</button>
-        <NewPIRequestForm user={user} budgets={budgets} pos={pos} requests={requests} suppliers={suppliers} savePOs={savePOs} saveSuppliers={saveSuppliers} editFor={editTarget} onSuccess={() => { setEditTarget(null); showToast("Edit request submitted", "success"); }} />
+        <NewPIRequestForm user={user} budgets={budgets} pos={pos} requests={requests} savePOs={savePOs} editFor={editTarget} onSuccess={() => { setEditTarget(null); showToast("Edit request submitted", "success"); }} />
       </div>
     );
   }
