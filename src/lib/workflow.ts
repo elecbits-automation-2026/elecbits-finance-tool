@@ -12,13 +12,12 @@ const deptApprovers = () => getRoster().filter(u => u.role === "DeptApprover");
 
 export function getEligibleDeptApprovers(requester, selectedType, isProject) {
   const dept = requester.dept;
-  // Executive / Management self-approval chains are purely role-based.
+  // Executive self-approval chain is purely role-based.
   if (dept === "Executive") {
     if (requester.role === "CEO") return getRoster().filter(u => u.role === "CEO" && u.id !== requester.id);
     if (requester.role === "VP") return getRoster().filter(u => u.role === "CEO");
     return [];
   }
-  if (dept === "Management") return getRoster().filter(u => u.role === "SuperManager" && u.id !== requester.id);
   // Finance routes to the Finance Head.
   if (dept === "Finance") return getRoster().filter(u => u.role === "FinanceHead");
   // Every other department: its own DeptApprover(s) — the head(s) whose

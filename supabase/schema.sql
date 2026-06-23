@@ -415,16 +415,12 @@ begin
     else
       ids := '{}';
     end if;
-  elsif req_dept = 'Management' then
-    select coalesce(array_agg(public.app_user_id(p)), '{}') into ids
-      from public.profiles p where p.status = 'active' and p.role = 'SuperManager'
-      and public.app_user_id(p) <> req_uid;
   elsif req_dept = 'Finance' then
     select coalesce(array_agg(public.app_user_id(p)), '{}') into ids
       from public.profiles p where p.status = 'active' and p.role = 'FinanceHead';
   else
-    -- Every other department: its own DeptApprover(s). Pure role + department —
-    -- no scopes or cross-department bridges.
+    -- Every other department (incl. Management): its own DeptApprover(s).
+    -- Pure role + department — no scopes or cross-department bridges.
     select coalesce(array_agg(public.app_user_id(p)), '{}') into ids
       from public.profiles p where p.status = 'active' and p.role = 'DeptApprover'
       and req_dept = any(public.user_depts(p));
