@@ -92,6 +92,14 @@ export function RequestDetails({ request: r, pos_all }) {
           {!isPOorPI && r.reason && <div className="sm:col-span-2"><span className="text-slate-500">Reason:</span> {r.reason}</div>}
           {!isBudget && !isPOorPI && r.purpose && <div className="sm:col-span-2"><span className="text-slate-500">Purpose:</span> {r.purpose}</div>}
           {r.linkedPONumber && <div className="sm:col-span-2 bg-fuchsia-50 p-2 rounded border border-fuchsia-200"><span className="text-fuchsia-900 font-semibold">Linked PO:</span> <span className="font-mono">{r.linkedPONumber}</span></div>}
+          {Array.isArray(r.splits) && r.splits.length > 0 && (
+            <div className="sm:col-span-2 bg-indigo-50 p-2 rounded border border-indigo-200">
+              <div className="text-indigo-900 font-semibold mb-1">Project split (one supplier, {r.splits.length} projects)</div>
+              {r.splits.map((s, i) => (
+                <div key={i} className="flex justify-between"><span className="font-mono">{s.projectId}{s.projectName ? ` — ${s.projectName}` : ""}</span><span className="font-semibold">₹{((s.amountINR || 0) / 100000).toFixed(2)}L</span></div>
+              ))}
+            </div>
+          )}
           {r.clientOrderValue > 0 && <div><span className="text-slate-500">Client Order:</span> ₹{(r.clientOrderValue / 100000).toFixed(2)}L</div>}
           {r.startDate && <div><span className="text-slate-500">Start:</span> {r.startDate}</div>}
           {r.endDate && <div><span className="text-slate-500">End:</span> {r.endDate}</div>}

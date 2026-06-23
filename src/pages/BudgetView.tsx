@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Briefcase, Target, Zap } from "lucide-react";
-import { getMonthlyBudgetUsage } from "../lib/finance";
+import { getMonthlyBudgetUsage, getProjectSpend } from "../lib/finance";
 import { isReadOnly } from "../lib/access";
 
 // ============ BUDGET VIEW ============
@@ -35,9 +35,7 @@ export function BudgetView({ user, budgets, requests }) {
         <div className="space-y-3">
           {clientProjects.length === 0 && <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-500">No active client projects.</div>}
           {clientProjects.map(b => {
-            const projReqs = requests.filter(r => r.projectId === b.projectId);
-            const committed = projReqs.filter(r => !["Rejected", "Cancelled", "Paid"].includes(r.status)).reduce((s, r) => s + (r.amountINR || r.amount), 0);
-            const paid = projReqs.filter(r => r.status === "Paid").reduce((s, r) => s + (r.amountINR || r.amount), 0);
+            const { paid, committed } = getProjectSpend(requests, b.projectId);
             const util = ((paid + committed) / b.amountINR) * 100;
             const margin = ((b.clientOrderValue - b.amountINR) / b.clientOrderValue) * 100;
             return (
@@ -73,8 +71,7 @@ export function BudgetView({ user, budgets, requests }) {
         <div className="space-y-3">
           {rdProjects.length === 0 && <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-500">No active R&D projects.</div>}
           {rdProjects.map(b => {
-            const paid = requests.filter(r => r.projectId === b.projectId && r.status === "Paid").reduce((s, r) => s + (r.amountINR || r.amount), 0);
-            const committed = requests.filter(r => r.projectId === b.projectId && !["Paid", "Rejected", "Cancelled"].includes(r.status)).reduce((s, r) => s + (r.amountINR || r.amount), 0);
+            const { paid, committed } = getProjectSpend(requests, b.projectId);
             return (
               <div key={b.id} className="bg-white rounded-xl border border-fuchsia-200 p-4">
                 <div className="flex items-center gap-2 mb-2"><span className="text-xs px-1.5 py-0.5 rounded bg-fuchsia-100 text-fuchsia-700 font-bold">R&D</span><span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">{b.rdType}</span><div className="font-bold">{b.projectName}</div></div>
@@ -95,8 +92,7 @@ export function BudgetView({ user, budgets, requests }) {
         <div className="space-y-3">
           {oneTimeBudgets.length === 0 && <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-500">No active one-time budgets.</div>}
           {oneTimeBudgets.map(b => {
-            const paid = requests.filter(r => r.projectId === b.projectId && r.status === "Paid").reduce((s, r) => s + (r.amountINR || r.amount), 0);
-            const committed = requests.filter(r => r.projectId === b.projectId && !["Paid", "Rejected", "Cancelled"].includes(r.status)).reduce((s, r) => s + (r.amountINR || r.amount), 0);
+            const { paid, committed } = getProjectSpend(requests, b.projectId);
             const avail = Math.max(0, b.amountINR - paid - committed);
             return (
               <div key={b.id} className="bg-white rounded-xl border border-emerald-200 p-4">

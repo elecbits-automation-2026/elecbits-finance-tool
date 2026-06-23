@@ -18,6 +18,28 @@ export function computeLineItemTotals(lineItems) {
 export function isImageFile(type) { return type && type.startsWith("image/"); }
 export function isPdfFile(type) { return type === "application/pdf"; }
 
+// Amount of a payment request attributable to one project: its split share if the
+// payment is split across multiple projects, else its full amount when it's a
+// single-project payment. Keeps per-project spend correct everywhere it's summed.
+export function requestAmountForProject(r, projectId) {
+  if (Array.isArray(r.splits) && r.splits.length) {
+    return r.splits.filter(s => s.projectId === projectId).reduce((sum, s) => sum + (s.amountINR || 0), 0);
+  }
+  return r.projectId === projectId ? (r.amountINR || r.amount || 0) : 0;
+}
+
+// Paid / committed for a project, honoring multi-project split payments.
+export function getProjectSpend(requests, projectId) {
+  let paid = 0, committed = 0;
+  (requests || []).forEach(r => {
+    if (["Rejected", "Cancelled"].includes(r.status)) return;
+    const amt = requestAmountForProject(r, projectId);
+    if (amt <= 0) return;
+    if (r.status === "Paid") paid += amt; else committed += amt;
+  });
+  return { paid, committed, total: paid + committed };
+}
+
 export function getActiveBudgetForProject(budgets, projectId) {
   return budgets.find(b => b.type === "Project" && b.projectId === projectId && (b.status === "Active" || b.status === "Active Budget" || b.currentStage === "Active"));
 }

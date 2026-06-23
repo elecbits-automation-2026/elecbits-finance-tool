@@ -4,7 +4,7 @@ import { EXPENSE_TYPES, NON_PROJECT_DEPTS, VP_THRESHOLD, CEO_THRESHOLD } from ".
 import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
-import { getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage, getApprovedPOsForProject, getApprovedPOsForDept, getPOUsage, getPOAvailable } from "../lib/finance";
+import { getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage, getApprovedPOsForProject, getApprovedPOsForDept, getPOUsage, getPOAvailable, getProjectSpend } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
 import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
@@ -35,12 +35,27 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
   });
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Split one supplier payment across multiple same-department projects, each
+  // drawn against its own budget (for accurate per-project spend reporting).
+  const [splitMode, setSplitMode] = useState(false);
+  const [splits, setSplits] = useState([{ projectId: "", amount: "" }, { projectId: "", amount: "" }]);
 
   const selectedType = EXPENSE_TYPES.find(t => t.id === form.expenseTypeId);
   const isProject = selectedType?.requiresProject || false;
   const isTravel = selectedType?.name.includes("Travel");
   const isVendorPayment = selectedType?.name.includes("Vendor Payment");
-  const amountINR = form.currency === "INR" ? parseFloat(form.amount || 0) : parseFloat(form.amount || 0) * parseFloat(form.fxRate || 0);
+  const singleAmountINR = form.currency === "INR" ? parseFloat(form.amount || 0) : parseFloat(form.amount || 0) * parseFloat(form.fxRate || 0);
+  // Projects eligible for a split: active project budgets in the raiser's own
+  // department (split is single-department by design → one approval chain).
+  const splitProjects = budgets.filter(b => b.type === "Project" && b.dept === user.dept && (b.status === "Active" || b.currentStage === "Active"));
+  const splitTotalINR = splits.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const useSplit = isProject && splitMode;
+  const amountINR = useSplit ? splitTotalINR : singleAmountINR;
+  function projAvailable(projectId) {
+    const b = getActiveBudgetForProject(budgets, projectId);
+    return b ? Math.max(0, b.amountINR - getProjectSpend(requests, projectId).total) : 0;
+  }
+  function setSplitRow(i, patch) { setSplits(splits.map((r, idx) => idx === i ? { ...r, ...patch } : r)); }
 
   const eligibleApprovers = getEligibleDeptApprovers(user, selectedType, isProject);
   const needsMid = needsBoxBuildMidApproval(user);
@@ -85,7 +100,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     if (!form.description.trim()) return setErr("Description required");
     if (!form.amount || amountINR <= 0) return setErr("Valid amount required");
     if (form.currency !== "INR" && (!form.fxRate || parseFloat(form.fxRate) <= 0)) return setErr("Valid FX rate required");
-    if (isProject && !form.projectId) return setErr("Project ID required");
+    if (isProject && !useSplit && !form.projectId) return setErr("Project ID required");
     if (!isProject && !form.purpose.trim()) return setErr("Purpose mandatory");
     if (!form.attachment) return setErr("Attachment is mandatory");
 
@@ -96,14 +111,27 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
       selectedApproverIds = form.selectedApproverIds;
     } else if (eligibleApprovers.length === 1) selectedApproverIds = [eligibleApprovers[0].id];
 
-    if (isProject) {
+    let splitRows = [];
+    if (isProject && !useSplit) {
       const budget = getActiveBudgetForProject(budgets, form.projectId);
       if (!budget) return setErr("No active budget for this project. Raise a budget request first.");
-      const projReqs = requests.filter(r => r.projectId === form.projectId && !["Rejected", "Cancelled"].includes(r.status));
-      const projCommitted = projReqs.reduce((s, r) => s + (r.amountINR || r.amount), 0);
-      const available = budget.amountINR - projCommitted;
+      const available = Math.max(0, budget.amountINR - getProjectSpend(requests, form.projectId).total);
       if (available - amountINR < 0) return setErr(`Exceeds project budget. Available: ₹${(available / 100000).toFixed(2)}L.`);
       if (!form.linkedPOId) return setErr("PO is mandatory for project payments. Select an approved PO.");
+    } else if (useSplit) {
+      // One supplier payment split across multiple same-department projects, each
+      // drawn against its own budget. (Per-project PO is not required for a split.)
+      splitRows = splits.filter(r => r.projectId && parseFloat(r.amount) > 0);
+      if (splitRows.length < 2) return setErr("Add at least two projects to split this payment across.");
+      const ids = splitRows.map(r => r.projectId);
+      if (new Set(ids).size !== ids.length) return setErr("Each project can appear only once in the split.");
+      for (const r of splitRows) {
+        const budget = getActiveBudgetForProject(budgets, r.projectId);
+        if (!budget) return setErr(`No active budget for ${r.projectId}.`);
+        if (budget.dept !== user.dept) return setErr("All split projects must be in your department.");
+        const avail = Math.max(0, budget.amountINR - getProjectSpend(requests, r.projectId).total);
+        if (parseFloat(r.amount) > avail) return setErr(`${r.projectId}: exceeds available budget (₹${(avail / 100000).toFixed(2)}L).`);
+      }
     }
 
     if (!isProject && selectedType) {
@@ -123,15 +151,21 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     const now = new Date().toISOString();
     const initialStage = needsMid ? "BoxBuildMid" : "DeptApproval";
     const linkedPOInfo = form.linkedPOId ? pos.find(p => p.id === form.linkedPOId) : null;
+    // Documented per-project breakdown for the spend report.
+    const splitData = useSplit ? splitRows.map(r => {
+      const b = getActiveBudgetForProject(budgets, r.projectId);
+      return { projectId: r.projectId, projectName: b?.projectName || r.projectId, amountINR: parseFloat(r.amount) };
+    }) : undefined;
     const newRequest = {
       id: "EXP-" + Date.now(), kind: "Payment", createdDate: now,
       requesterId: user.id, requesterName: user.name, requesterEmail: user.email, dept: user.dept,
       expenseTypeId: form.expenseTypeId, expenseTypeName: selectedType.name, category: selectedType.category,
-      isProject, projectId: form.projectId, vendor: form.vendor, description: form.description, purpose: form.purpose,
-      amount: parseFloat(form.amount), currency: form.currency, fxRate: parseFloat(form.fxRate), amountINR,
+      isProject, projectId: useSplit ? null : form.projectId, splits: splitData,
+      vendor: form.vendor, description: form.description, purpose: form.purpose,
+      amount: useSplit ? splitTotalINR : parseFloat(form.amount), currency: useSplit ? "INR" : form.currency, fxRate: useSplit ? 1 : parseFloat(form.fxRate), amountINR,
       travelFrom: form.travelFrom, travelTo: form.travelTo, travelDates: form.travelDates,
       invoiceNumber: form.invoiceNumber, attachment: form.attachment,
-      linkedPOId: form.linkedPOId || null, linkedPONumber: linkedPOInfo?.poNumber || null,
+      linkedPOId: useSplit ? null : (form.linkedPOId || null), linkedPONumber: useSplit ? null : (linkedPOInfo?.poNumber || null),
       selectedApprovers: selectedApproverIds,
       currentStage: initialStage, status: getStageLabel(initialStage),
       resubmittedFrom: resubmitFrom?.id || null,
@@ -197,6 +231,14 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
         </div>
 
         {isProject && (
+          <label className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer flex-wrap">
+            <input type="checkbox" checked={splitMode} onChange={(e) => setSplitMode(e.target.checked)} className="w-4 h-4" />
+            <span className="font-medium">Split this payment across multiple projects</span>
+            <span className="text-xs text-slate-500">(one supplier · same department · each drawn against its own budget)</span>
+          </label>
+        )}
+
+        {isProject && !splitMode && (
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">Project (must have approved budget) *</label>
             {activeBudgets.length === 0 ? (
@@ -207,9 +249,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
               <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value, linkedPOId: "" })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                 <option value="">Select project</option>
                 {activeBudgets.map(b => {
-                  const projReqs = requests.filter(r => r.projectId === b.projectId && !["Rejected", "Cancelled"].includes(r.status));
-                  const committed = projReqs.reduce((s, r) => s + (r.amountINR || r.amount), 0);
-                  const avail = b.amountINR - committed;
+                  const avail = b.amountINR - getProjectSpend(requests, b.projectId).total;
                   const tag = b.projectType === "RD" ? "[R&D] " : b.projectType === "OneTime" ? "[One-Time] " : "[Client] ";
                   return <option key={b.projectId} value={b.projectId}>{tag}{b.projectId} — {b.projectName} (₹{(avail / 100000).toFixed(2)}L avail)</option>;
                 })}
@@ -218,8 +258,33 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
           </div>
         )}
 
+        {/* Split table — one supplier payment across multiple same-dept projects */}
+        {useSplit && (
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+            <div className="text-xs font-bold text-indigo-900">Project split — each row draws against its own project budget</div>
+            {splitProjects.length === 0 && <div className="text-xs text-red-700"><AlertTriangle className="w-3.5 h-3.5 inline mr-1" />No active project budgets in {user.dept}.</div>}
+            {splits.map((row, i) => {
+              const avail = row.projectId ? projAvailable(row.projectId) : 0;
+              const over = !!row.projectId && (parseFloat(row.amount) || 0) > avail;
+              return (
+                <div key={i} className="flex items-center gap-2 flex-wrap">
+                  <select value={row.projectId} onChange={(e) => setSplitRow(i, { projectId: e.target.value })} className="flex-1 min-w-[180px] px-2 py-1.5 border border-slate-300 rounded text-sm bg-white">
+                    <option value="">Select project</option>
+                    {splitProjects.map(b => <option key={b.projectId} value={b.projectId}>{b.projectId} — {b.projectName}</option>)}
+                  </select>
+                  <input type="number" value={row.amount} onChange={(e) => setSplitRow(i, { amount: e.target.value })} placeholder="₹ amount" className={`w-32 px-2 py-1.5 border rounded text-sm ${over ? "border-red-400 bg-red-50" : "border-slate-300"}`} />
+                  {row.projectId && <span className={`text-[11px] whitespace-nowrap ${over ? "text-red-600 font-semibold" : "text-slate-500"}`}>avail ₹{(avail / 100000).toFixed(2)}L</span>}
+                  {splits.length > 2 && <button type="button" onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-600 px-1">✕</button>}
+                </div>
+              );
+            })}
+            <button type="button" onClick={() => setSplits([...splits, { projectId: "", amount: "" }])} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">+ Add project</button>
+            <div className="text-sm font-bold text-slate-900 pt-1 border-t border-indigo-200">Split total: ₹{(splitTotalINR / 100000).toFixed(2)}L</div>
+          </div>
+        )}
+
         {/* PO selection for project */}
-        {isProject && form.projectId && (
+        {isProject && !splitMode && form.projectId && (
           <div className={`rounded-lg p-3 border ${projectPOs.length === 0 ? "bg-red-50 border-red-200" : "bg-fuchsia-50 border-fuchsia-200"}`}>
             <label className="block text-xs font-bold text-fuchsia-900 mb-1.5">
               <FileSignature className="w-3.5 h-3.5 inline mr-1" />Linked PO * (mandatory for project payments)
@@ -342,7 +407,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
           <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What is this expense for?" rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
         </div>
 
-        <CurrencyInput value={form.amount} currency={form.currency} fxRate={form.fxRate} onChange={(v) => setForm({ ...form, amount: v.amount, currency: v.currency, fxRate: v.fxRate })} label="Amount" required />
+        {!useSplit && <CurrencyInput value={form.amount} currency={form.currency} fxRate={form.fxRate} onChange={(v) => setForm({ ...form, amount: v.amount, currency: v.currency, fxRate: v.fxRate })} label="Amount" required />}
 
         {isMultiApprover && !isOdmProject && (
           <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">

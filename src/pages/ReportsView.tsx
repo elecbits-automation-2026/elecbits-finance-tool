@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PiggyBank, Wallet, TrendingUp } from "lucide-react";
+import { getProjectSpend, requestAmountForProject } from "../lib/finance";
 
 // ============ REPORTS VIEW ============
 export function ReportsView({ user, requests, budgets, pos }) {
@@ -10,7 +11,7 @@ export function ReportsView({ user, requests, budgets, pos }) {
   const paidReqs = requests.filter(r => r.status === "Paid");
   const clientProjects = activeProjBudgets.filter(b => b.projectType === "Client");
   const rdProjects = activeProjBudgets.filter(b => b.projectType === "RD");
-  const rdPaid = paidReqs.filter(r => rdProjects.some(p => p.projectId === r.projectId)).reduce((s, r) => s + (r.amountINR || r.amount), 0);
+  const rdPaid = rdProjects.reduce((s, p) => s + getProjectSpend(requests, p.projectId).paid, 0);
 
   function groupSum(list, keyFn, valFn = r => r.amountINR || r.amount) {
     const out: Record<string, number> = {};
@@ -75,10 +76,20 @@ export function ReportsView({ user, requests, budgets, pos }) {
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <h3 className="font-bold text-slate-900 mb-3">By Project</h3>
-            {groupSum(paidReqs.filter(r => r.projectId), r => r.projectId).length === 0 ? <div className="text-sm text-slate-500">None</div> : groupSum(paidReqs.filter(r => r.projectId), r => r.projectId).map(([p, v]) => {
-              const budget = activeProjBudgets.find(b => b.projectId === p);
-              return <div key={p} className="flex justify-between text-sm py-1.5 border-b border-slate-100 last:border-0"><div><span className="font-mono text-xs">{p}</span>{budget && <span className="ml-2">{budget.projectName}</span>}</div><span className="font-bold">₹{(v / 100000).toFixed(2)}L</span></div>;
-            })}
+            {(() => {
+              // Per-project paid, attributing split payments to each project's share.
+              const byProj: Record<string, number> = {};
+              paidReqs.forEach(r => {
+                if (Array.isArray(r.splits) && r.splits.length) r.splits.forEach(s => { byProj[s.projectId] = (byProj[s.projectId] || 0) + (s.amountINR || 0); });
+                else if (r.projectId) byProj[r.projectId] = (byProj[r.projectId] || 0) + (r.amountINR || r.amount || 0);
+              });
+              const rows = Object.entries(byProj).sort((a, b) => b[1] - a[1]);
+              if (rows.length === 0) return <div className="text-sm text-slate-500">None</div>;
+              return rows.map(([p, v]) => {
+                const budget = activeProjBudgets.find(b => b.projectId === p);
+                return <div key={p} className="flex justify-between text-sm py-1.5 border-b border-slate-100 last:border-0"><div><span className="font-mono text-xs">{p}</span>{budget && <span className="ml-2">{budget.projectName}</span>}</div><span className="font-bold">₹{(v / 100000).toFixed(2)}L</span></div>;
+              });
+            })()}
           </div>
         </div>
       )}
@@ -91,8 +102,9 @@ export function ReportsView({ user, requests, budgets, pos }) {
             {clientProjects.length === 0 ? <div className="text-sm text-slate-500 py-4">No active client projects.</div> : (
               <div className="space-y-2">
                 {clientProjects.map(b => {
-                  const projPaid = paidReqs.filter(r => r.projectId === b.projectId).reduce((s, r) => s + (r.amountINR || r.amount), 0);
-                  const projCommitted = requests.filter(r => r.projectId === b.projectId && !["Paid", "Rejected", "Cancelled"].includes(r.status)).reduce((s, r) => s + (r.amountINR || r.amount), 0);
+                  const _spend = getProjectSpend(requests, b.projectId);
+                  const projPaid = _spend.paid;
+                  const projCommitted = _spend.committed;
                   const profit = b.clientOrderValue - projPaid;
                   const margin = b.clientOrderValue > 0 ? (profit / b.clientOrderValue) * 100 : 0;
                   return (
