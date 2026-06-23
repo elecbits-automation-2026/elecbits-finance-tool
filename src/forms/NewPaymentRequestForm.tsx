@@ -288,7 +288,9 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
                   <div className="flex items-center gap-2 flex-wrap">
                     <select value={row.projectId} onChange={(e) => setSplitRow(i, { projectId: e.target.value, linkedPOId: "" })} className="flex-1 min-w-[160px] px-2 py-1.5 border border-slate-300 rounded text-sm bg-white">
                       <option value="">Select project</option>
-                      {splitProjects.map(b => <option key={b.projectId} value={b.projectId}>{b.projectId} — {b.projectName}</option>)}
+                      {/* Hide projects already chosen in other rows — each project (and
+                          thus its PO) can appear at most once, else it'd be one project. */}
+                      {splitProjects.filter(b => b.projectId === row.projectId || !splits.some((o, idx) => idx !== i && o.projectId === b.projectId)).map(b => <option key={b.projectId} value={b.projectId}>{b.projectId} — {b.projectName}</option>)}
                     </select>
                     <input type="number" value={row.amount} onChange={(e) => setSplitRow(i, { amount: e.target.value })} placeholder="₹ amount" className={`w-32 px-2 py-1.5 border rounded text-sm ${over ? "border-red-400 bg-red-50" : "border-slate-300"}`} />
                     {splits.length > 2 && <button type="button" onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-600 px-1">✕</button>}
