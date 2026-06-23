@@ -98,7 +98,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
     if (!form.expenseTypeId) return setErr("Select expense type");
     if (!form.description.trim()) return setErr("Description required");
-    if (!form.amount || amountINR <= 0) return setErr("Valid amount required");
+    if ((!useSplit && !form.amount) || amountINR <= 0) return setErr(useSplit ? "Add at least one project with an amount to the split" : "Valid amount required");
     if (form.currency !== "INR" && (!form.fxRate || parseFloat(form.fxRate) <= 0)) return setErr("Valid FX rate required");
     if (isProject && !useSplit && !form.projectId) return setErr("Project ID required");
     if (!isProject && !form.purpose.trim()) return setErr("Purpose mandatory");
@@ -121,6 +121,10 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     } else if (useSplit) {
       // One supplier payment split across multiple same-department projects, each
       // drawn against its own budget. (Per-project PO is not required for a split.)
+      // Reject partially-filled rows — otherwise a row with an amount but no
+      // project (or vice-versa) would inflate the total past what gets budget-
+      // checked. After this, the total === sum of validated rows.
+      if (splits.some(r => (!!r.projectId) !== (parseFloat(r.amount) > 0))) return setErr("Each split row needs both a project and an amount.");
       splitRows = splits.filter(r => r.projectId && parseFloat(r.amount) > 0);
       if (splitRows.length < 2) return setErr("Add at least two projects to split this payment across.");
       const ids = splitRows.map(r => r.projectId);
