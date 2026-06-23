@@ -166,7 +166,19 @@ export default function App() {
       try { setBudgets(await db.fetchBudgets()); } catch { /* keep optimistic state */ }
     }
   }
-  async function savePOs(v) { setPOs(v); try { await db.savePOs(v); } catch (e) { console.error("savePOs failed:", e?.message); } }
+  // POs are dept-scoped (RLS, 0020), so write only the rows this call changed —
+  // a full replace would prune POs the user can't see (other departments').
+  async function savePOs(v) {
+    const prev = pos;
+    setPOs(v);
+    try {
+      await db.savePOsDiff(prev, v);
+    } catch (e) {
+      console.error("savePOs failed:", e?.message);
+      showToast("Save failed: " + (e?.message || "unknown error"), "error");
+      try { setPOs(await db.fetchPOs()); } catch { /* keep optimistic state */ }
+    }
+  }
   async function saveSuppliers(v) { setSuppliers(v); try { await db.saveSuppliers(v); } catch (e) { console.error("saveSuppliers failed:", e?.message); } }
   async function savePOCounter(v) { setPOCounter(v); try { await db.savePOCounter(v); } catch (e) { console.error("savePOCounter failed:", e?.message); } }
   async function savePICounter(v) { setPICounter(v); try { await db.savePICounter(v); } catch (e) { console.error("savePICounter failed:", e?.message); } }

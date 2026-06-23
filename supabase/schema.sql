@@ -839,3 +839,32 @@ create policy budgets_delete on public.budgets
     and exists (select 1 from public.profiles p
                 where p.auth_id = auth.uid() and p.role in ('SuperManager','Admin'))
   );
+
+-- ---------------------------------------------------------------- pos (PO/PI)
+-- Same dept-scoping as budgets: company-wide roles see everything, everyone else
+-- sees their own departments' POs/PIs and their own. Writes stay permissive
+-- (no guard trigger on pos); the client uses a diff-based save so a scoped user
+-- never prunes rows they can't see.
+create or replace function public.can_select_po(p_dept text, p_requester text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.auth_id = auth.uid()
+      and ( p.role in ('CEO','VP','FinanceHead','Accountant','SuperManager','Admin')
+         or p_requester = public.app_user_id(p)
+         or p_dept = any(public.user_depts(p)) )
+  );
+$$;
+
+drop policy if exists pos_auth_all on public.pos;
+drop policy if exists pos_select on public.pos;
+drop policy if exists pos_insert on public.pos;
+drop policy if exists pos_update on public.pos;
+drop policy if exists pos_delete on public.pos;
+
+create policy pos_select on public.pos
+  for select to authenticated
+  using (public.can_select_po(dept, requester_id));
+create policy pos_insert on public.pos for insert to authenticated with check (true);
+create policy pos_update on public.pos for update to authenticated using (true) with check (true);
+create policy pos_delete on public.pos for delete to authenticated using (true);
