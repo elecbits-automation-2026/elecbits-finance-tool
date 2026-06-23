@@ -49,6 +49,9 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
   // department (split is single-department by design → one approval chain).
   const splitProjects = budgets.filter(b => b.type === "Project" && b.dept === user.dept && (b.status === "Active" || b.currentStage === "Active"));
   const splitTotalINR = splits.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  // A split is one supplier invoice, so once a row picks a PO its supplier is
+  // locked for the whole split — other rows only offer that supplier's POs.
+  const splitSupplier = splits.map(r => r.linkedPOId ? (pos.find(p => p.id === r.linkedPOId)?.supplierName || null) : null).find(Boolean) || null;
   const useSplit = isProject && splitMode;
   const amountINR = useSplit ? splitTotalINR : singleAmountINR;
   function projAvailable(projectId) {
@@ -144,6 +147,9 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
         const availPO = getPOAvailable(po, requests);
         if (amt > availPO) return setErr(`${r.projectId}: exceeds PO ${po.poNumber} available (₹${(availPO / 100000).toFixed(2)}L).`);
       }
+      // One supplier invoice → all linked POs must be the same vendor.
+      const sups = [...new Set(splitRows.map(r => pos.find(p => p.id === r.linkedPOId)?.supplierName).filter(Boolean))];
+      if (sups.length > 1) return setErr("A split is one supplier invoice — all linked POs must be from the same supplier.");
     }
 
     if (!isProject && selectedType) {
@@ -174,7 +180,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
       requesterId: user.id, requesterName: user.name, requesterEmail: user.email, dept: user.dept,
       expenseTypeId: form.expenseTypeId, expenseTypeName: selectedType.name, category: selectedType.category,
       isProject, projectId: useSplit ? null : form.projectId, splits: splitData,
-      vendor: form.vendor, description: form.description, purpose: form.purpose,
+      vendor: useSplit ? (splitSupplier || form.vendor) : form.vendor, description: form.description, purpose: form.purpose,
       amount: useSplit ? splitTotalINR : parseFloat(form.amount), currency: useSplit ? "INR" : form.currency, fxRate: useSplit ? 1 : parseFloat(form.fxRate), amountINR,
       travelFrom: form.travelFrom, travelTo: form.travelTo, travelDates: form.travelDates,
       invoiceNumber: form.invoiceNumber, attachment: form.attachment,
@@ -275,9 +281,11 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
         {useSplit && (
           <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
             <div className="text-xs font-bold text-indigo-900">Project split — each row draws against its own project budget</div>
+            {splitSupplier && <div className="text-[11px] text-indigo-700">Supplier locked to <strong>{splitSupplier}</strong> — every row uses this vendor's POs.</div>}
             {splitProjects.length === 0 && <div className="text-xs text-red-700"><AlertTriangle className="w-3.5 h-3.5 inline mr-1" />No active project budgets in {user.dept}.</div>}
             {splits.map((row, i) => {
-              const rowPOs = row.projectId ? getApprovedPOsForProject(pos, row.projectId) : [];
+              const projPOs = row.projectId ? getApprovedPOsForProject(pos, row.projectId) : [];
+              const rowPOs = projPOs.filter(po => !splitSupplier || po.supplierName === splitSupplier || po.id === row.linkedPOId);
               const availBudget = row.projectId ? projAvailable(row.projectId) : 0;
               const rowPO = row.linkedPOId ? pos.find(p => p.id === row.linkedPOId) : null;
               const availPO = rowPO ? getPOAvailable(rowPO, requests) : 0;
@@ -296,7 +304,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
                     {splits.length > 2 && <button type="button" onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-600 px-1">✕</button>}
                   </div>
                   {row.projectId && (rowPOs.length === 0 ? (
-                    <div className="text-[11px] text-red-700"><AlertTriangle className="w-3 h-3 inline mr-0.5" />No approved PO for {row.projectId} — raise one first.</div>
+                    <div className="text-[11px] text-red-700"><AlertTriangle className="w-3 h-3 inline mr-0.5" />{projPOs.length > 0 && splitSupplier ? `No PO from ${splitSupplier} for ${row.projectId}.` : `No approved PO for ${row.projectId} — raise one first.`}</div>
                   ) : (
                     <div className="flex items-center gap-2 flex-wrap">
                       <select value={row.linkedPOId} onChange={(e) => setSplitRow(i, { linkedPOId: e.target.value })} className="flex-1 min-w-[160px] px-2 py-1.5 border border-fuchsia-300 rounded text-sm bg-white">
