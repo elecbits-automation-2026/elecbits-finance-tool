@@ -149,7 +149,19 @@ export default function App() {
     }
   }
 
-  async function saveRequests(v) { setRequests(v); try { await db.saveRequests(v); } catch (e) { console.error("saveRequests failed:", e?.message); } }
+  // Payments are dept-scoped (RLS, 0021), so write only the rows this call changed —
+  // a full replace would prune payments the user can't see (other departments').
+  async function saveRequests(v) {
+    const prev = requests;
+    setRequests(v);
+    try {
+      await db.saveRequestsDiff(prev, v);
+    } catch (e) {
+      console.error("saveRequests failed:", e?.message);
+      showToast("Save failed: " + (e?.message || "unknown error"), "error");
+      try { setRequests(await db.fetchRequests()); } catch { /* keep optimistic state */ }
+    }
+  }
   // Budgets are server-enforced (migration 0011): write only the rows this
   // call actually changed, so the save carries exactly the caller's intent and
   // never re-asserts other users' rows against the workflow triggers.
