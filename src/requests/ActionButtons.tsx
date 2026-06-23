@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CheckCircle2, XCircle, AlertTriangle, Send, Upload, X, Undo2, CheckSquare, FileSignature, Paperclip } from "lucide-react";
 import { getStageLabel, computeNextStage, getDeptHeadsForDept } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
-import { formatPONumber, formatPINumber } from "../lib/finance";
+import { formatPONumber, formatPINumber, getPOUsage } from "../lib/finance";
 
 // ============ ACTION BUTTONS ============
 export function ActionButtons({ request, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, savePICounter, poCounter, piCounter, addNotifications, showToast }) {
@@ -235,26 +235,23 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
     else {
       const updatedRequests = requests_all.map(updateFn);
       await saveRequests(updatedRequests);
-      // Auto-close PO if 100% paid after this payment
-      if (actionType === "pay" && request.linkedPOId) {
-        const linkedPOItem = pos_all.find(p => p.id === request.linkedPOId);
-        if (linkedPOItem && (linkedPOItem.status === "Approved" || linkedPOItem.currentStage === "Approved")) {
-          const totalPaidAfter = updatedRequests
-            .filter(r => r.linkedPOId === linkedPOItem.id && r.status === "Paid")
-            .reduce((s, r) => s + (r.amountINR || r.amount), 0);
-          if (totalPaidAfter >= linkedPOItem.amountINR) {
-            const closedPO = {
-              ...linkedPOItem,
-              status: "Closed",
-              currentStage: "Closed",
-              closedAt: now,
-              history: [...(linkedPOItem.history || []), { action: "Auto-Closed (100% paid)", by: "System", byId: "SYS", at: now, comments: `Fully consumed. Final payment ${request.id} of ₹${(request.amountINR / 100000).toFixed(2)}L brought total paid to ₹${(totalPaidAfter / 100000).toFixed(2)}L.` }],
-            };
-            const updatedPOs = pos_all.map(p => p.id === linkedPOItem.id ? closedPO : p);
-            await savePOs(updatedPOs);
-            if (showToast) showToast(`PO ${linkedPOItem.poNumber} auto-closed (fully paid)`, "info");
+      // Auto-close any PO that's now 100% paid — handles single-PO payments and
+      // each PO referenced by a split payment. Uses the split-aware getPOUsage.
+      if (actionType === "pay") {
+        const affectedPOIds = [...new Set((request.splits?.length ? request.splits.map(s => s.linkedPOId) : [request.linkedPOId]).filter(Boolean))];
+        let updatedPOs = pos_all;
+        const closed = [];
+        affectedPOIds.forEach(poId => {
+          const po = updatedPOs.find(p => p.id === poId);
+          if (po && (po.status === "Approved" || po.currentStage === "Approved")) {
+            const paidAfter = getPOUsage(updatedRequests, poId).paid;
+            if (paidAfter >= po.amountINR) {
+              updatedPOs = updatedPOs.map(p => p.id === poId ? { ...po, status: "Closed", currentStage: "Closed", closedAt: now, history: [...(po.history || []), { action: "Auto-Closed (100% paid)", by: "System", byId: "SYS", at: now, comments: `Fully consumed; total paid ₹${(paidAfter / 100000).toFixed(2)}L.` }] } : p);
+              closed.push(po.poNumber);
+            }
           }
-        }
+        });
+        if (closed.length) { await savePOs(updatedPOs); if (showToast) showToast(`PO ${closed.join(", ")} auto-closed (fully paid)`, "info"); }
       }
     }
 

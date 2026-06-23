@@ -96,7 +96,7 @@ export function RequestDetails({ request: r, pos_all }) {
             <div className="sm:col-span-2 bg-indigo-50 p-2 rounded border border-indigo-200">
               <div className="text-indigo-900 font-semibold mb-1">Project split (one supplier, {r.splits.length} projects)</div>
               {r.splits.map((s, i) => (
-                <div key={i} className="flex justify-between"><span className="font-mono">{s.projectId}{s.projectName ? ` — ${s.projectName}` : ""}</span><span className="font-semibold">₹{((s.amountINR || 0) / 100000).toFixed(2)}L</span></div>
+                <div key={i} className="flex justify-between gap-2"><span className="font-mono">{s.projectId}{s.projectName ? ` — ${s.projectName}` : ""}{s.linkedPONumber ? ` · PO ${s.linkedPONumber}` : ""}</span><span className="font-semibold whitespace-nowrap">₹{((s.amountINR || 0) / 100000).toFixed(2)}L</span></div>
               ))}
             </div>
           )}

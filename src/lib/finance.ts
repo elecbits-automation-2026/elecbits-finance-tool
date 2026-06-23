@@ -103,10 +103,22 @@ export function getApprovedPOsForProject(pos, projectId) {
 export function getApprovedPOsForDept(pos, dept) {
   return getApprovedPOs(pos).filter(po => !po.isProject && po.dept === dept);
 }
+// Amount of a payment attributable to a PO: the sum of its split shares linked to
+// that PO, else its full amount when it's a single-PO (non-split) payment.
+export function requestAmountForPO(r, poId) {
+  if (Array.isArray(r.splits) && r.splits.length) {
+    return r.splits.filter(s => s.linkedPOId === poId).reduce((sum, s) => sum + (s.amountINR || 0), 0);
+  }
+  return r.linkedPOId === poId ? (r.amountINR || r.amount || 0) : 0;
+}
 export function getPOUsage(requests, poId) {
-  const matching = requests.filter(r => r.linkedPOId === poId && !["Rejected", "Cancelled"].includes(r.status));
-  const paid = matching.filter(r => r.status === "Paid").reduce((s, r) => s + (r.amountINR || r.amount), 0);
-  const committed = matching.filter(r => r.status !== "Paid").reduce((s, r) => s + (r.amountINR || r.amount), 0);
+  let paid = 0, committed = 0;
+  (requests || []).forEach(r => {
+    if (["Rejected", "Cancelled"].includes(r.status)) return;
+    const amt = requestAmountForPO(r, poId);
+    if (amt <= 0) return;
+    if (r.status === "Paid") paid += amt; else committed += amt;
+  });
   return { paid, committed, total: paid + committed };
 }
 export function getPOAvailable(po, requests) {

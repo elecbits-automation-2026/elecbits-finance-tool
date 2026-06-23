@@ -38,7 +38,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
   // Split one supplier payment across multiple same-department projects, each
   // drawn against its own budget (for accurate per-project spend reporting).
   const [splitMode, setSplitMode] = useState(false);
-  const [splits, setSplits] = useState([{ projectId: "", amount: "" }, { projectId: "", amount: "" }]);
+  const [splits, setSplits] = useState([{ projectId: "", amount: "", linkedPOId: "" }, { projectId: "", amount: "", linkedPOId: "" }]);
 
   const selectedType = EXPENSE_TYPES.find(t => t.id === form.expenseTypeId);
   const isProject = selectedType?.requiresProject || false;
@@ -120,21 +120,29 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
       if (!form.linkedPOId) return setErr("PO is mandatory for project payments. Select an approved PO.");
     } else if (useSplit) {
       // One supplier payment split across multiple same-department projects, each
-      // drawn against its own budget. (Per-project PO is not required for a split.)
-      // Reject partially-filled rows — otherwise a row with an amount but no
-      // project (or vice-versa) would inflate the total past what gets budget-
-      // checked. After this, the total === sum of validated rows.
-      if (splits.some(r => (!!r.projectId) !== (parseFloat(r.amount) > 0))) return setErr("Each split row needs both a project and an amount.");
-      splitRows = splits.filter(r => r.projectId && parseFloat(r.amount) > 0);
+      // drawn against its own budget AND its own approved PO.
+      // Reject partially-filled rows — otherwise an unvalidated row would inflate
+      // the total past what gets checked. After this, total === sum of valid rows.
+      const started = r => !!r.projectId || parseFloat(r.amount) > 0 || !!r.linkedPOId;
+      const complete = r => !!r.projectId && parseFloat(r.amount) > 0 && !!r.linkedPOId;
+      if (splits.some(r => started(r) && !complete(r))) return setErr("Each split row needs a project, an amount, and an approved PO.");
+      splitRows = splits.filter(complete);
       if (splitRows.length < 2) return setErr("Add at least two projects to split this payment across.");
       const ids = splitRows.map(r => r.projectId);
       if (new Set(ids).size !== ids.length) return setErr("Each project can appear only once in the split.");
       for (const r of splitRows) {
+        const amt = parseFloat(r.amount);
         const budget = getActiveBudgetForProject(budgets, r.projectId);
         if (!budget) return setErr(`No active budget for ${r.projectId}.`);
         if (budget.dept !== user.dept) return setErr("All split projects must be in your department.");
-        const avail = Math.max(0, budget.amountINR - getProjectSpend(requests, r.projectId).total);
-        if (parseFloat(r.amount) > avail) return setErr(`${r.projectId}: exceeds available budget (₹${(avail / 100000).toFixed(2)}L).`);
+        const availBudget = Math.max(0, budget.amountINR - getProjectSpend(requests, r.projectId).total);
+        if (amt > availBudget) return setErr(`${r.projectId}: exceeds available budget (₹${(availBudget / 100000).toFixed(2)}L).`);
+        const po = pos.find(p => p.id === r.linkedPOId);
+        if (!po) return setErr(`${r.projectId}: selected PO not found.`);
+        if (po.projectId !== r.projectId) return setErr(`${r.projectId}: the selected PO belongs to a different project.`);
+        if (po.status === "Cancelled") return setErr(`${r.projectId}: the selected PO is cancelled.`);
+        const availPO = getPOAvailable(po, requests);
+        if (amt > availPO) return setErr(`${r.projectId}: exceeds PO ${po.poNumber} available (₹${(availPO / 100000).toFixed(2)}L).`);
       }
     }
 
@@ -158,7 +166,8 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     // Documented per-project breakdown for the spend report.
     const splitData = useSplit ? splitRows.map(r => {
       const b = getActiveBudgetForProject(budgets, r.projectId);
-      return { projectId: r.projectId, projectName: b?.projectName || r.projectId, amountINR: parseFloat(r.amount) };
+      const po = pos.find(p => p.id === r.linkedPOId);
+      return { projectId: r.projectId, projectName: b?.projectName || r.projectId, amountINR: parseFloat(r.amount), linkedPOId: r.linkedPOId, linkedPONumber: po?.poNumber || null };
     }) : undefined;
     const newRequest = {
       id: "EXP-" + Date.now(), kind: "Payment", createdDate: now,
@@ -268,21 +277,37 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
             <div className="text-xs font-bold text-indigo-900">Project split — each row draws against its own project budget</div>
             {splitProjects.length === 0 && <div className="text-xs text-red-700"><AlertTriangle className="w-3.5 h-3.5 inline mr-1" />No active project budgets in {user.dept}.</div>}
             {splits.map((row, i) => {
-              const avail = row.projectId ? projAvailable(row.projectId) : 0;
-              const over = !!row.projectId && (parseFloat(row.amount) || 0) > avail;
+              const rowPOs = row.projectId ? getApprovedPOsForProject(pos, row.projectId) : [];
+              const availBudget = row.projectId ? projAvailable(row.projectId) : 0;
+              const rowPO = row.linkedPOId ? pos.find(p => p.id === row.linkedPOId) : null;
+              const availPO = rowPO ? getPOAvailable(rowPO, requests) : 0;
+              const amt = parseFloat(row.amount) || 0;
+              const over = !!row.projectId && (amt > availBudget || (!!rowPO && amt > availPO));
               return (
-                <div key={i} className="flex items-center gap-2 flex-wrap">
-                  <select value={row.projectId} onChange={(e) => setSplitRow(i, { projectId: e.target.value })} className="flex-1 min-w-[180px] px-2 py-1.5 border border-slate-300 rounded text-sm bg-white">
-                    <option value="">Select project</option>
-                    {splitProjects.map(b => <option key={b.projectId} value={b.projectId}>{b.projectId} — {b.projectName}</option>)}
-                  </select>
-                  <input type="number" value={row.amount} onChange={(e) => setSplitRow(i, { amount: e.target.value })} placeholder="₹ amount" className={`w-32 px-2 py-1.5 border rounded text-sm ${over ? "border-red-400 bg-red-50" : "border-slate-300"}`} />
-                  {row.projectId && <span className={`text-[11px] whitespace-nowrap ${over ? "text-red-600 font-semibold" : "text-slate-500"}`}>avail ₹{(avail / 100000).toFixed(2)}L</span>}
-                  {splits.length > 2 && <button type="button" onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-600 px-1">✕</button>}
+                <div key={i} className="bg-white rounded-lg border border-slate-200 p-2 space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select value={row.projectId} onChange={(e) => setSplitRow(i, { projectId: e.target.value, linkedPOId: "" })} className="flex-1 min-w-[160px] px-2 py-1.5 border border-slate-300 rounded text-sm bg-white">
+                      <option value="">Select project</option>
+                      {splitProjects.map(b => <option key={b.projectId} value={b.projectId}>{b.projectId} — {b.projectName}</option>)}
+                    </select>
+                    <input type="number" value={row.amount} onChange={(e) => setSplitRow(i, { amount: e.target.value })} placeholder="₹ amount" className={`w-32 px-2 py-1.5 border rounded text-sm ${over ? "border-red-400 bg-red-50" : "border-slate-300"}`} />
+                    {splits.length > 2 && <button type="button" onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-600 px-1">✕</button>}
+                  </div>
+                  {row.projectId && (rowPOs.length === 0 ? (
+                    <div className="text-[11px] text-red-700"><AlertTriangle className="w-3 h-3 inline mr-0.5" />No approved PO for {row.projectId} — raise one first.</div>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select value={row.linkedPOId} onChange={(e) => setSplitRow(i, { linkedPOId: e.target.value })} className="flex-1 min-w-[160px] px-2 py-1.5 border border-fuchsia-300 rounded text-sm bg-white">
+                        <option value="">Select approved PO</option>
+                        {rowPOs.map(po => <option key={po.id} value={po.id}>{po.poNumber} — {po.supplierName} (₹{(getPOAvailable(po, requests) / 100000).toFixed(2)}L avail)</option>)}
+                      </select>
+                      <span className={`text-[11px] whitespace-nowrap ${over ? "text-red-600 font-semibold" : "text-slate-500"}`}>budget ₹{(availBudget / 100000).toFixed(2)}L{rowPO ? ` · PO ₹${(availPO / 100000).toFixed(2)}L` : ""}</span>
+                    </div>
+                  ))}
                 </div>
               );
             })}
-            <button type="button" onClick={() => setSplits([...splits, { projectId: "", amount: "" }])} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">+ Add project</button>
+            <button type="button" onClick={() => setSplits([...splits, { projectId: "", amount: "", linkedPOId: "" }])} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">+ Add project</button>
             <div className="text-sm font-bold text-slate-900 pt-1 border-t border-indigo-200">Split total: ₹{(splitTotalINR / 100000).toFixed(2)}L</div>
           </div>
         )}
