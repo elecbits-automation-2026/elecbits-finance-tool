@@ -221,6 +221,7 @@ function POCard({ po, requests, pos, user, onEdit, onCancel, onClose: onCloseMan
               <div><span className="text-slate-500">Terms:</span> {po.paymentTerms}</div>
             </div>
             {po.attachment && <div><span className="text-slate-500">Quote:</span> <button onClick={() => setViewAttachment(po.attachment)} className="text-fuchsia-700 underline font-medium inline-flex items-center gap-1"><Paperclip className="w-3 h-3" />{po.attachment.name}</button></div>}
+            {po.poDocument && <div><span className="text-slate-500">Signed Document:</span> <button onClick={() => setViewAttachment(po.poDocument)} className="text-fuchsia-700 underline font-medium inline-flex items-center gap-1"><Paperclip className="w-3 h-3" />{po.poDocument.name}</button></div>}
             {linkedReqs.length > 0 && (
               <div>
                 <div className="font-bold text-slate-700 mb-1">Linked Payments ({linkedReqs.length})</div>

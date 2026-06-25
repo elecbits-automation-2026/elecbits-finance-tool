@@ -113,6 +113,12 @@ export function RequestDetails({ request: r, pos_all }) {
               <button onClick={() => setViewAttachment(r.attachment)} className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 underline font-medium"><Paperclip className="w-3 h-3" />{r.attachment.name}</button>
             </div>
           )}
+          {r.paymentInvoice && (
+            <div className="sm:col-span-2">
+              <span className="text-slate-500">Invoice / Bill:</span>{" "}
+              <button onClick={() => setViewAttachment(r.paymentInvoice)} className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 underline font-medium"><Paperclip className="w-3 h-3" />{r.paymentInvoice.name}</button>
+            </div>
+          )}
           {r.paymentProof && (
             <div className="sm:col-span-2">
               <span className="text-slate-500">Payment Proof:</span>{" "}
