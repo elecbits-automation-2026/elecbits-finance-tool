@@ -1062,11 +1062,21 @@ begin
   if last_entry->>'byId' is distinct from uid then raise exception 'requests: history entry must be attributed to the caller'; end if;
 
   o_stage := o->>'currentStage'; n_stage := d->>'currentStage'; amt := coalesce((o->>'amountINR')::numeric, 0);
+  is_sm := p.role = 'SuperManager';
 
   if n_stage = 'Cancelled' or d->>'status' = 'Cancelled' then
     if o->>'requesterId' is distinct from uid then raise exception 'requests: only the requester may cancel'; end if;
     if coalesce(o->>'status','') in ('Paid','Rejected','Cancelled','Approved','Closed') then raise exception 'requests: this request can no longer be cancelled'; end if;
     if d->>'status' is distinct from 'Cancelled' then raise exception 'requests: cancelled requests must have status Cancelled'; end if;
+    return new;
+  end if;
+
+  -- Payment reversal ("Undo Payment"): Paid -> Processing, Accountant-only. Checked
+  -- before the eligibility gate because can_act_on_request blocks every action on a
+  -- Paid row by design. The 24h window stays a client-side UX guard.
+  if o_stage = 'Paid' and n_stage = 'Processing' then
+    if p.role <> 'Accountant' then raise exception 'requests: only an Accountant may reverse a payment'; end if;
+    if d->>'status' is distinct from 'Processing Payment' then raise exception 'requests: a reversed payment must return to "Processing Payment"'; end if;
     return new;
   end if;
 
@@ -1079,7 +1089,28 @@ begin
     return new;
   end if;
 
-  is_sm := p.role = 'SuperManager';
+  -- Accountant processing is a TWO-STEP flow that a single next-stage can't express:
+  --   Accountant --Start Processing--> Processing --Mark as Paid--> Paid
+  -- A SuperManager may also pay directly from either stage. Handle these explicitly;
+  -- all earlier stages fall through to the exact next-stage equality below.
+  if o_stage = 'Accountant' then
+    if n_stage = 'Processing' then
+      if d->>'status' is distinct from 'Processing Payment' then raise exception 'requests: moving to Processing must set status "Processing Payment"'; end if;
+      return new;
+    elsif n_stage = 'Paid' then
+      if not is_sm then raise exception 'requests: only a SuperManager may pay directly from the Accountant stage'; end if;
+      if d->>'status' is distinct from 'Paid' then raise exception 'requests: a paid request must have status "Paid"'; end if;
+      return new;
+    else
+      raise exception 'requests: invalid transition Accountant -> % (expected Processing or Paid)', n_stage;
+    end if;
+  end if;
+
+  if o_stage = 'Processing' then
+    if n_stage = 'Paid' and d->>'status' = 'Paid' then return new; end if;
+    raise exception 'requests: invalid transition Processing -> % (expected Paid / "Paid")', n_stage;
+  end if;
+
   exp_stage := public.payment_next_stage(amt, o_stage, is_sm);
   exp_status := public.payment_stage_status(exp_stage);
   if n_stage is distinct from exp_stage or d->>'status' is distinct from exp_status then
