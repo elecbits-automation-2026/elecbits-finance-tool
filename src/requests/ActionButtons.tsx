@@ -9,7 +9,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
   const [mode, setMode] = useState(null);
   const [comments, setComments] = useState("");
   const [busy, setBusy] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({ utr: "", paymentMode: "Bank Transfer", paymentDate: new Date().toISOString().slice(0, 10), proofAttachment: null, note: "" });
+  const [paymentForm, setPaymentForm] = useState({ utr: "", paymentMode: "Bank Transfer", paymentDate: new Date().toISOString().slice(0, 10), proofAttachment: null, invoiceAttachment: null, note: "" });
   const [poNumberInput, setPONumberInput] = useState("");
   const [poAttachment, setPOAttachment] = useState<{ name: string; size: number; type: string; data: any; uploadedAt: string } | null>(null);
 
@@ -51,6 +51,15 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
     reader.readAsDataURL(file);
   }
 
+  async function handlePaymentInvoiceUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert("Max 2MB."); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => { setPaymentForm({ ...paymentForm, invoiceAttachment: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } }); };
+    reader.readAsDataURL(file);
+  }
+
   async function handlePOAttachmentUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -71,6 +80,9 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
 
   async function doAction(actionType) {
     if (actionType === "reject" && !comments.trim()) { alert("Reason mandatory"); return; }
+    if (actionType === "pay" && !paymentForm.invoiceAttachment && !paymentForm.proofAttachment) { alert("Attach an invoice or payment-done document before marking this paid."); return; }
+    // PO/PI create at the accountant step must carry the signed/stamped document.
+    if (actionType === "approve" && isPOorPI && request.currentStage === "Accountant" && !isDocEdit && !isDocCancel && !poAttachment) { alert(`Attach the signed / stamped ${docLabel} document before assigning the number.`); return; }
     setBusy(true);
     const now = new Date().toISOString();
     let actionLabel = "";
@@ -201,11 +213,11 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
       actionLabel = "Started Processing"; newStage = "Processing"; newStatus = "Processing Payment";
     } else if (actionType === "pay") {
       actionLabel = "Paid"; newStage = "Paid"; newStatus = "Paid";
-      extraUpdates = { paymentUTR: paymentForm.utr.trim() || null, paymentMode: paymentForm.paymentMode, paymentDate: paymentForm.paymentDate, paymentProof: paymentForm.proofAttachment, paidAt: now, paidBy: user.name, paidById: user.id };
+      extraUpdates = { paymentUTR: paymentForm.utr.trim() || null, paymentMode: paymentForm.paymentMode, paymentDate: paymentForm.paymentDate, paymentProof: paymentForm.proofAttachment, paymentInvoice: paymentForm.invoiceAttachment, paidAt: now, paidBy: user.name, paidById: user.id };
     } else if (actionType === "undopay") {
       actionLabel = `Payment Undone by ${user.name}`;
       newStage = "Processing"; newStatus = "Processing Payment";
-      extraUpdates = { paymentUTR: null, paymentMode: null, paymentDate: null, paymentProof: null, paidAt: null, paidBy: null };
+      extraUpdates = { paymentUTR: null, paymentMode: null, paymentDate: null, paymentProof: null, paymentInvoice: null, paidAt: null, paidBy: null };
     }
 
     let paymentNote = "";
@@ -279,7 +291,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
     if (actionType === "reject" && showToast) showToast("Rejected", "info");
 
     setBusy(false); resetPOAssignForm();
-    setPaymentForm({ utr: "", paymentMode: "Bank Transfer", paymentDate: new Date().toISOString().slice(0, 10), proofAttachment: null, note: "" });
+    setPaymentForm({ utr: "", paymentMode: "Bank Transfer", paymentDate: new Date().toISOString().slice(0, 10), proofAttachment: null, invoiceAttachment: null, note: "" });
   }
 
   const stage = request.currentStage;
@@ -352,7 +364,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
           {!isDocEdit && !isDocCancel && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {docLabel} Document <span className="font-normal text-slate-500">(signed / stamped — optional but recommended)</span>
+                {docLabel} Document <span className="text-red-500">*</span> <span className="font-normal text-slate-500">(signed / stamped — required)</span>
               </label>
               {!poAttachment ? (
                 <label className="flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-fuchsia-300 rounded-lg cursor-pointer hover:border-fuchsia-500 hover:bg-fuchsia-100/50 text-xs text-slate-600 transition">
@@ -382,7 +394,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
             <textarea value={comments} onChange={(e) => setComments(e.target.value)} rows={2} className="w-full text-xs px-2 py-1.5 border border-slate-200 rounded-lg" />
           </div>
           <div className="flex gap-2">
-            <button onClick={() => doAction("approve")} disabled={busy} className="bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-400 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
+            <button onClick={() => doAction("approve")} disabled={busy || (!isDocEdit && !isDocCancel && !poAttachment)} className="bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
               {isDocEdit ? "Apply Edit" : isDocCancel ? "Confirm Cancellation" : "Assign & Approve"}
             </button>
             <button onClick={resetPOAssignForm} className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg">Cancel</button>
@@ -394,7 +406,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
       {mode === "pay" && (
         <div className="space-y-3 bg-emerald-50 p-4 rounded-lg border border-emerald-200">
           <div className="text-sm font-semibold text-emerald-900 flex items-center gap-1.5"><CheckSquare className="w-4 h-4" />Record Payment Details</div>
-          <p className="text-xs text-emerald-700">UTR and proof recommended for audit.</p>
+          <p className="text-xs text-emerald-700">Attach an invoice or a payment-done document (at least one is required). UTR also recommended for audit.</p>
           <div className="grid md:grid-cols-2 gap-3">
             <div><label className="block text-xs font-semibold text-slate-700 mb-1">UTR / Ref</label><input value={paymentForm.utr} onChange={(e) => setPaymentForm({ ...paymentForm, utr: e.target.value })} placeholder="UTR123456" className="w-full text-xs px-2 py-1.5 border border-slate-300 rounded-lg" /></div>
             <div><label className="block text-xs font-semibold text-slate-700 mb-1">Mode</label>
@@ -405,10 +417,24 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
           </div>
           <div><label className="block text-xs font-semibold text-slate-700 mb-1">Payment Date</label><input type="date" value={paymentForm.paymentDate} onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })} className="w-full text-xs px-2 py-1.5 border border-slate-300 rounded-lg" /></div>
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Payment Proof</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Invoice / Bill <span className="font-normal text-slate-500">(attach this or the payment proof)</span></label>
+            {!paymentForm.invoiceAttachment ? (
+              <label className="flex items-center justify-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-emerald-400 hover:bg-white text-xs">
+                <Upload className="w-4 h-4" />Upload invoice / bill (PDF, PNG, JPG, DOC — max 2MB)
+                <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={handlePaymentInvoiceUpload} />
+              </label>
+            ) : (
+              <div className="bg-white border border-emerald-200 rounded-lg p-2 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2"><Paperclip className="w-3 h-3 text-emerald-700" /><span className="font-medium">{paymentForm.invoiceAttachment.name}</span></div>
+                <button onClick={() => setPaymentForm({ ...paymentForm, invoiceAttachment: null })} className="text-red-600"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Payment Proof / Receipt <span className="font-normal text-slate-500">(attach this or the invoice)</span></label>
             {!paymentForm.proofAttachment ? (
               <label className="flex items-center justify-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-emerald-400 hover:bg-white text-xs">
-                <Upload className="w-4 h-4" />Upload proof (optional, max 2MB)
+                <Upload className="w-4 h-4" />Upload payment-done proof (PDF, PNG, JPG — max 2MB)
                 <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg" onChange={handlePaymentProofUpload} />
               </label>
             ) : (
@@ -420,7 +446,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
           </div>
           <div><label className="block text-xs font-semibold text-slate-700 mb-1">Note</label><input value={paymentForm.note} onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })} className="w-full text-xs px-2 py-1.5 border border-slate-300 rounded-lg" /></div>
           <div className="flex gap-2 pt-1">
-            <button onClick={() => doAction("pay")} disabled={busy} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Confirm Payment Done</button>
+            <button onClick={() => doAction("pay")} disabled={busy || (!paymentForm.invoiceAttachment && !paymentForm.proofAttachment)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Confirm Payment Done</button>
             <button onClick={() => setMode(null)} className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg">Cancel</button>
           </div>
         </div>
