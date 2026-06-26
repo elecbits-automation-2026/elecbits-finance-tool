@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle, AlertTriangle, Send, Upload, X, Undo2, CheckSqua
 import { getStageLabel, computeNextStage, getDeptHeadsForDept } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
 import { formatPONumber, formatPINumber, getPOUsage } from "../lib/finance";
+import { notifyWorkflow } from "../lib/notify";
 
 // ============ ACTION BUTTONS ============
 export function ActionButtons({ request, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, savePICounter, poCounter, piCounter, addNotifications, showToast }) {
@@ -265,6 +266,12 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
         });
         if (closed.length) { await savePOs(updatedPOs); if (showToast) showToast(`PO ${closed.join(", ")} auto-closed (fully paid)`, "info"); }
       }
+    }
+
+    // Email whoever is now next in line (or the requester on a rejection). The
+    // row is saved above, so the function reads its new stage and routes the mail.
+    if (actionType === "approve" || actionType === "reject") {
+      notifyWorkflow(isBudget ? "budgets" : isPOorPI ? "pos" : "requests", request.id);
     }
 
     if (actionType === "pay" && addNotifications) {

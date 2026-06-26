@@ -7,6 +7,7 @@ import { getRoster } from "../lib/roster";
 import { getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage, getApprovedPOsForProject, getApprovedPOsForDept, getPOUsage, getPOAvailable, getProjectSpend } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
 import { AttachmentInput } from "../components/AttachmentInput";
+import { notifyWorkflow } from "../lib/notify";
 import { FlowPreview } from "../components/FlowPreview";
 
 // ============ NEW PAYMENT REQUEST FORM ============
@@ -188,6 +189,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
       ],
     };
     await saveRequests([newRequest, ...requests]);
+    notifyWorkflow("requests", newRequest.id);
     setSubmitting(false);
     onSuccess();
   }
