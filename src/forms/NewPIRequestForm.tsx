@@ -5,6 +5,7 @@ import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
 import { computeLineItemTotals, getActiveBudgetForProject } from "../lib/finance";
 import { AttachmentInput } from "../components/AttachmentInput";
+import { notifyWorkflow } from "../lib/notify";
 import { FlowPreview } from "../components/FlowPreview";
 
 // ============ NEW PI REQUEST FORM ============
@@ -191,6 +192,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
         history: [{ action: "Edit Submitted", by: user.name, byId: user.id, at: now, comments: `Edit for ${editFor.piNumber}: ${form.changeNote}` }],
       };
       await savePOs([editRequest, ...pos]);
+      notifyWorkflow("pos", editRequest.id);
     } else {
       const initialStage = needsMid ? "BoxBuildMid" : "DeptApproval";
       const newPI = {
@@ -202,6 +204,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
         history: [{ action: "Submitted", by: user.name, byId: user.id, at: now, comments: "PI request raised" }],
       };
       await savePOs([newPI, ...pos]);
+      notifyWorkflow("pos", newPI.id);
     }
     setSubmitting(false);
     onSuccess();

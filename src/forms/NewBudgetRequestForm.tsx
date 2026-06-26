@@ -7,6 +7,7 @@ import { getRoster } from "../lib/roster";
 import { getRDAllocation } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
 import { AttachmentInput } from "../components/AttachmentInput";
+import { notifyWorkflow } from "../lib/notify";
 import { FlowPreview } from "../components/FlowPreview";
 
 // ============ NEW BUDGET FORM ============
@@ -198,6 +199,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
       history: [{ action: "Submitted", by: user.name, byId: user.id, at: now, comments: `${budgetType} budget request raised` }],
     };
     await saveBudgets([newBudget, ...budgets]);
+    notifyWorkflow("budgets", newBudget.id);
     setSubmitting(false);
     onSuccess();
   }

@@ -5,6 +5,7 @@ import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
 import { computeLineItemTotals, getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage } from "../lib/finance";
 import { AttachmentInput } from "../components/AttachmentInput";
+import { notifyWorkflow } from "../lib/notify";
 import { FlowPreview } from "../components/FlowPreview";
 
 // ============ NEW PO REQUEST FORM ============
@@ -258,6 +259,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
         history: [{ action: "Edit Submitted", by: user.name, byId: user.id, at: now, comments: `Edit for ${editFor.poNumber}: ${form.changeNote}` }],
       };
       await savePOs([editRequest, ...pos]);
+      notifyWorkflow("pos", editRequest.id);
     } else {
       const initialStage = needsMid ? "BoxBuildMid" : "DeptApproval";
       const newPO = {
@@ -269,6 +271,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
         history: [{ action: "Submitted", by: user.name, byId: user.id, at: now, comments: "PO request raised" }],
       };
       await savePOs([newPO, ...pos]);
+      notifyWorkflow("pos", newPO.id);
     }
     setSubmitting(false);
     onSuccess();
