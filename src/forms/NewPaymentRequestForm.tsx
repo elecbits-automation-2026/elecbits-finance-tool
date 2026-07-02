@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { RotateCcw, Wallet, AlertTriangle, FileSignature, Edit3, Target } from "lucide-react";
-import { EXPENSE_TYPES, NON_PROJECT_DEPTS, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { EXPENSE_TYPES, NON_PROJECT_DEPTS, VP_THRESHOLD, CEO_THRESHOLD, TRAVEL_EXPENSE_IDS } from "../constants";
 import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
@@ -236,7 +236,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
                 </optgroup>
               )}
               <optgroup label="Non-Project Expenses">
-                {EXPENSE_TYPES.filter(t => t.category === "Non-Project").map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {EXPENSE_TYPES.filter(t => t.category === "Non-Project" && !TRAVEL_EXPENSE_IDS.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </optgroup>
             </select>
             {NON_PROJECT_DEPTS.includes(user.dept) && <p className="text-xs text-slate-500 mt-1">{user.dept} cannot raise project expenses.</p>}

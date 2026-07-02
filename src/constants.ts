@@ -23,8 +23,9 @@ export const EXPENSE_TYPES = [
   { id: "VP-PROJ", name: "Vendor Payment (Project)", category: "Project", requiresProject: true },
   { id: "PA-PROJ", name: "Project Asset Purchase", category: "Project", requiresProject: true },
   { id: "PT-PROJ", name: "Project Travel", category: "Project", requiresProject: true },
-  { id: "PC-PROJ", name: "Project Consultant Fee", category: "Project", requiresProject: true },
-  { id: "TA", name: "Travel & Accommodation", category: "Non-Project" },
+  { id: "PC-PROJ", name: "Project Consultant Fee", category: "Non-Project" },
+  { id: "TR", name: "Travel", category: "Non-Project" },
+  { id: "AC", name: "Accommodation", category: "Non-Project" },
   { id: "AS", name: "Assets (Non-Project)", category: "Non-Project" },
   { id: "SW", name: "Software & Subscriptions", category: "Non-Project" },
   { id: "OS", name: "Office Supplies", category: "Non-Project" },
@@ -36,6 +37,14 @@ export const EXPENSE_TYPES = [
   { id: "UE", name: "Utilities & Office Expenses", category: "Non-Project" },
   { id: "MI", name: "Miscellaneous", category: "Non-Project" },
 ];
+
+// Travel-flow expense types. These are Non-Project but are raised through the
+// dedicated "Raise Travel" flow (NewTravelRequestForm), so they are excluded from
+// the generic payment form's expense-type dropdown.
+export const TRAVEL_EXPENSE_IDS = ["TR", "AC"];
+// Minimum lead time (days) before travel start; a shorter lead requires an
+// urgency justification.
+export const TRAVEL_MIN_LEAD_DAYS = 4;
 
 export const STORAGE_KEY_REQUESTS = "elecbits_fos_requests_v3";
 export const STORAGE_KEY_BUDGETS = "elecbits_fos_budgets_v4";
