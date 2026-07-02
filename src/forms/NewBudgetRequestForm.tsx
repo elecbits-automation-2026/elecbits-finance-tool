@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { PiggyBank, Briefcase, Target, TrendingUp, Coins, AlertTriangle, CheckCircle2, Zap } from "lucide-react";
-import { EXPENSE_TYPES, NON_PROJECT_DEPTS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { MONTHLY_BUDGET_CATEGORIES, NON_PROJECT_DEPTS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
 import { isHODLevel, isReadOnly, effectiveDepts } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel, computeNextStage } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
@@ -350,7 +350,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Category *</label>
               <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                 <option value="">Select</option>
-                {EXPENSE_TYPES.filter(t => t.category === "Non-Project").map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                {MONTHLY_BUDGET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <CurrencyInput value={form.amount} currency={form.currency} fxRate={form.fxRate} onChange={(v) => setForm({ ...form, amount: v.amount, currency: v.currency, fxRate: v.fxRate })} label="Monthly Amount" required />

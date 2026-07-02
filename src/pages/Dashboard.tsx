@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { LogOut, Bell, Shield, Clock, FileText, CheckSquare, PiggyBank, FileSignature, Plus, Target, TrendingUp, Building2, Users, Coins, Plane } from "lucide-react";
+import { LogOut, Bell, Shield, Clock, FileText, CheckSquare, PiggyBank, FileSignature, Plus, Target, TrendingUp, Building2, Users, Coins } from "lucide-react";
 import { canUserActOnRequest, getUserActionsOnRequest, isReadOnly, effectiveDepts, canRaiseAnyBudget } from "../lib/access";
 import { ElecbitsLogo } from "../components/ElecbitsLogo";
 import { NotificationPanel } from "../components/NotificationPanel";
 import { TabBar } from "../components/TabBar";
 import { RequestList } from "../requests/RequestList";
 import { NewPaymentRequestForm } from "../forms/NewPaymentRequestForm";
-import { NewTravelRequestForm } from "../forms/NewTravelRequestForm";
 import { NewBudgetRequestForm } from "../forms/NewBudgetRequestForm";
 import { NewPORequestForm } from "../forms/NewPORequestForm";
 import { NewPIRequestForm } from "../forms/NewPIRequestForm";
@@ -148,7 +147,6 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, supplie
     tabs.push({ id: "new-po", label: "Raise PO", icon: FileSignature });
     tabs.push({ id: "new-pi", label: "Raise PI", icon: FileText });
     tabs.push({ id: "new-payment", label: "Raise Payment", icon: Plus });
-    tabs.push({ id: "new-travel", label: "Raise Travel", icon: Plane });
     tabs.push({ id: "budgets", label: "All Budgets", icon: Target });
     tabs.push({ id: "pos", label: "All POs", icon: FileSignature });
     tabs.push({ id: "pis", label: "All PIs", icon: FileText });
@@ -169,7 +167,6 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, supplie
       {view === "my-requests" && <MyRequestsView {...commonProps} />}
       {view === "my-approvals" && <MyApprovalsView {...commonProps} />}
       {view === "new-payment" && <NewPaymentRequestForm {...commonProps} onSuccess={() => { showToast("Payment request submitted", "success"); setView("my-requests"); }} />}
-      {view === "new-travel" && <NewTravelRequestForm {...commonProps} onSuccess={() => { showToast("Travel request submitted", "success"); setView("my-requests"); }} />}
       {view === "new-budget" && <NewBudgetRequestForm {...commonProps} onSuccess={() => { showToast("Budget request submitted", "success"); setView("my-requests"); }} />}
       {view === "new-po" && <NewPORequestForm {...commonProps} onSuccess={() => { showToast("PO request submitted", "success"); setView("my-requests"); }} />}
       {view === "new-pi" && <NewPIRequestForm {...commonProps} onSuccess={() => { showToast("PI request submitted", "success"); setView("my-requests"); }} />}

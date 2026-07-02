@@ -24,8 +24,8 @@ export const EXPENSE_TYPES = [
   { id: "PA-PROJ", name: "Project Asset Purchase", category: "Project", requiresProject: true },
   { id: "PT-PROJ", name: "Project Travel", category: "Project", requiresProject: true },
   { id: "PC-PROJ", name: "Project Consultant Fee", category: "Non-Project" },
-  { id: "TR", name: "Travel", category: "Non-Project" },
-  { id: "AC", name: "Accommodation", category: "Non-Project" },
+  { id: "TR", name: "Travel", category: "Non-Project", pool: "Travel & Accommodation" },
+  { id: "AC", name: "Accommodation", category: "Non-Project", pool: "Travel & Accommodation" },
   { id: "AS", name: "Assets (Non-Project)", category: "Non-Project" },
   { id: "SW", name: "Software & Subscriptions", category: "Non-Project" },
   { id: "OS", name: "Office Supplies", category: "Non-Project" },
@@ -38,13 +38,21 @@ export const EXPENSE_TYPES = [
   { id: "MI", name: "Miscellaneous", category: "Non-Project" },
 ];
 
-// Travel-flow expense types. These are Non-Project but are raised through the
-// dedicated "Raise Travel" flow (NewTravelRequestForm), so they are excluded from
-// the generic payment form's expense-type dropdown.
+// Travel-flow expense types. Travel and Accommodation are picked separately in the
+// Raise Payment dropdown (so spend is clearly categorised) but both draw from a
+// single shared "Travel & Accommodation" monthly pool. Selecting either reveals the
+// travel-specific fields (dates, urgency, travellers) inline in the payment form.
+export const TRAVEL_POOL = "Travel & Accommodation";
 export const TRAVEL_EXPENSE_IDS = ["TR", "AC"];
 // Minimum lead time (days) before travel start; a shorter lead requires an
 // urgency justification.
 export const TRAVEL_MIN_LEAD_DAYS = 4;
+// The monthly-budget "category" (pool) a non-project expense draws from. Travel and
+// Accommodation share one pool; every other type pools to its own name.
+export const expensePoolName = (name) => (EXPENSE_TYPES.find(t => t.name === name)?.pool) || name;
+// Distinct monthly-budget categories a Dept Head can raise (one per pool), so the
+// budget form offers a single "Travel & Accommodation" option, not two.
+export const MONTHLY_BUDGET_CATEGORIES = [...new Set(EXPENSE_TYPES.filter(t => t.category === "Non-Project").map(t => t.pool || t.name))];
 
 export const STORAGE_KEY_REQUESTS = "elecbits_fos_requests_v3";
 export const STORAGE_KEY_BUDGETS = "elecbits_fos_budgets_v4";
