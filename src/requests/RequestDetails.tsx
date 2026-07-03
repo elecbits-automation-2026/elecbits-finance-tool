@@ -107,6 +107,46 @@ export function RequestDetails({ request: r, pos_all }) {
           {r.travelFrom && <div><span className="text-slate-500">From:</span> {r.travelFrom}</div>}
           {r.travelTo && <div><span className="text-slate-500">To:</span> {r.travelTo}</div>}
           {r.travelDates && <div><span className="text-slate-500">Dates:</span> {r.travelDates}</div>}
+          {r.travel && (
+            <div className="sm:col-span-2 bg-sky-50 border border-sky-200 rounded p-2 space-y-1">
+              <div className="text-xs font-bold text-sky-900">{r.travel.subType === "Accommodation" ? "🏨 Accommodation" : "✈️ Travel"} details</div>
+              {r.travel.subType === "Accommodation" ? (
+                <>
+                  {r.travel.place && <div><span className="text-slate-500">Location:</span> {r.travel.place}</div>}
+                  {(r.travel.checkIn || r.travel.checkOut) && <div><span className="text-slate-500">Stay:</span> {r.travel.checkIn} → {r.travel.checkOut}</div>}
+                </>
+              ) : (
+                <>
+                  {(r.travel.fromLocation || r.travel.toLocation) && <div><span className="text-slate-500">Route:</span> {r.travel.fromLocation} → {r.travel.toLocation}</div>}
+                  {(r.travel.startDate || r.travel.endDate) && <div><span className="text-slate-500">Dates:</span> {r.travel.startDate} → {r.travel.endDate}</div>}
+                </>
+              )}
+              {r.travel.urgent && <div><span className="text-amber-700 font-semibold">Urgent</span> ({r.travel.leadDays}d notice){r.travel.urgencyJustification ? `: ${r.travel.urgencyJustification}` : ""}</div>}
+              {r.travel.overshootJustification && <div><span className="text-red-700 font-semibold">Over-budget:</span> {r.travel.overshootJustification}</div>}
+              {Array.isArray(r.travel.travellers) && r.travel.travellers.length > 0 && (
+                <div>
+                  <div className="text-slate-500">Additional travellers ({r.travel.travellers.length}):</div>
+                  {r.travel.travellers.map((t, i) => <div key={i} className="ml-2">• {t.fullName} ({t.age}, {t.sex})</div>)}
+                </div>
+              )}
+            </div>
+          )}
+          {r.postTravel && (
+            <div className="sm:col-span-2 bg-teal-50 border border-teal-200 rounded p-2 space-y-1">
+              <div className="text-xs font-bold text-teal-900">📝 Post-travel report</div>
+              {r.postTravel.actualDates && <div><span className="text-slate-500">Actual dates:</span> {r.postTravel.actualDates}</div>}
+              {r.postTravel.outcome && <div><span className="text-slate-500">Outcome:</span> {r.postTravel.outcome}</div>}
+              {r.postTravel.actualSpend != null && r.postTravel.actualSpend !== "" && <div><span className="text-slate-500">Actual spend:</span> ₹{Number(r.postTravel.actualSpend).toLocaleString("en-IN")}</div>}
+              {r.postTravel.notes && <div><span className="text-slate-500">Notes:</span> {r.postTravel.notes}</div>}
+              {r.postTravel.receipt && (
+                <div>
+                  <span className="text-slate-500">Bills / receipts:</span>{" "}
+                  <button onClick={() => setViewAttachment(r.postTravel.receipt)} className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-800 underline font-medium"><Paperclip className="w-3 h-3" />{r.postTravel.receipt.name}</button>
+                </div>
+              )}
+              {r.postTravel.filedBy && <div className="text-slate-400">Filed by {r.postTravel.filedBy}{r.postTravel.filedAt ? ` · ${new Date(r.postTravel.filedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}</div>}
+            </div>
+          )}
           {r.attachment && (
             <div className="sm:col-span-2">
               <span className="text-slate-500">Attachment:</span>{" "}

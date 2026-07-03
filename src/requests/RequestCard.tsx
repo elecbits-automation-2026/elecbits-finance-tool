@@ -1,10 +1,10 @@
-import { FileSignature, PiggyBank, Wallet, Paperclip, Eye, RotateCcw } from "lucide-react";
+import { FileSignature, PiggyBank, Wallet, Paperclip, Eye, RotateCcw, ClipboardCheck } from "lucide-react";
 import { CURRENCIES } from "../constants";
 import { ActionButtons } from "./ActionButtons";
 import { CancelButton } from "./CancelButton";
 import { RequestDetails } from "./RequestDetails";
 
-export function RequestCard({ request: r, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter = undefined, savePICounter = undefined, poCounter = undefined, piCounter = undefined, expanded, setExpanded, showActions = false, showCancelResubmit = false, onResubmit = undefined, addNotifications = undefined, showToast = undefined }) {
+export function RequestCard({ request: r, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter = undefined, savePICounter = undefined, poCounter = undefined, piCounter = undefined, expanded, setExpanded, showActions = false, showCancelResubmit = false, onResubmit = undefined, onFillPostTravel = undefined, addNotifications = undefined, showToast = undefined }) {
   const isBudget = r.kind === "Budget";
   const isPO = r.kind === "PO";
   const isPI = r.kind === "PI";
@@ -29,6 +29,7 @@ export function RequestCard({ request: r, user, requests_all, budgets_all, pos_a
 
   const canCancel = showCancelResubmit && r.requesterId === user.id && !["Paid", "Rejected", "Cancelled", "Active", "Approved", "Closed"].includes(r.status) && r.currentStage !== "Processing";
   const canResubmit = showCancelResubmit && r.requesterId === user.id && r.status === "Rejected" && r.kind === "Payment";
+  const canFillPostTravel = showCancelResubmit && r.requesterId === user.id && r.travel && r.status === "Paid" && !r.postTravel;
 
   return (
     <div className={`bg-white rounded-xl border overflow-hidden ${isPI ? "border-teal-200" : isPO ? "border-fuchsia-200" : isBudget ? "border-indigo-200" : "border-slate-200"}`}>
@@ -81,6 +82,7 @@ export function RequestCard({ request: r, user, requests_all, budgets_all, pos_a
         {showActions && <ActionButtons request={r} user={user} requests_all={requests_all} budgets_all={budgets_all} pos_all={pos_all} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} savePICounter={savePICounter} poCounter={poCounter} piCounter={piCounter} addNotifications={addNotifications} showToast={showToast} />}
         {canCancel && <CancelButton request={r} user={user} requests_all={requests_all} budgets_all={budgets_all} pos_all={pos_all} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} />}
         {canResubmit && <div className="mt-2"><button onClick={onResubmit} className="bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><RotateCcw className="w-3.5 h-3.5" />Resubmit with edits</button></div>}
+        {canFillPostTravel && <div className="mt-2"><button onClick={onFillPostTravel} className="bg-teal-100 hover:bg-teal-200 border border-teal-300 text-teal-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><ClipboardCheck className="w-3.5 h-3.5" />Fill post-travel form</button></div>}
 
         {expanded && <RequestDetails request={r} pos_all={pos_all} />}
       </div>

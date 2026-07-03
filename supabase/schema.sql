@@ -1043,6 +1043,27 @@ begin
   o := old.data;
   if d = o then return new; end if;
 
+  -- Post-travel report: the requester may attach a `postTravel` object (plus one
+  -- history entry) to their OWN travel request, even after it is finalised (Paid).
+  -- This is the only user-write allowed on a finalised row. Nothing else may change:
+  -- money, stage, status, approvers and every other field stay identical.
+  if (o->'travel') is not null
+     and (o->>'requesterId') = uid
+     and (o->'postTravel') is null
+     and (d->'postTravel') is not null
+     and (d->>'status') is not distinct from (o->>'status')
+     and (d->>'currentStage') is not distinct from (o->>'currentStage')
+     and (d - 'postTravel' - 'history') = (o - 'postTravel' - 'history') then
+    o_hist := coalesce(o->'history','[]'::jsonb); n_hist := coalesce(d->'history','[]'::jsonb);
+    if jsonb_array_length(n_hist) <> jsonb_array_length(o_hist) + 1 then
+      raise exception 'requests: a post-travel report may append exactly one history entry';
+    end if;
+    if (n_hist->-1->>'byId') is distinct from uid then
+      raise exception 'requests: post-travel history entry must be attributed to the caller';
+    end if;
+    return new;
+  end if;
+
   if (o->>'amountINR') is distinct from (d->>'amountINR')
      or (o->>'requesterId') is distinct from (d->>'requesterId')
      or (o->>'dept') is distinct from (d->>'dept')

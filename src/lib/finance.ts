@@ -1,4 +1,5 @@
 // ============ FINANCE / BUDGET / PO HELPERS ============
+import { expensePoolName } from "../constants";
 
 // Helper: compute line item totals
 export function computeLineItemTotals(lineItems) {
@@ -83,7 +84,10 @@ export function getActiveMonthlyBudget(budgets, dept, category, month) {
 export function getMonthlyBudgetUsage(requests, dept, category, month) {
   const matching = requests.filter(r => {
     if (r.dept !== dept) return false;
-    if (r.expenseTypeName !== category) return false;
+    // Match by POOL, not the raw expense name, so Travel and Accommodation both
+    // draw from the single "Travel & Accommodation" pool. For every other expense
+    // the pool is its own name, so this is unchanged behaviour.
+    if (expensePoolName(r.expenseTypeName) !== category) return false;
     if (["Rejected", "Cancelled"].includes(r.status)) return false;
     const rMonth = (r.createdDate || "").slice(0, 7);
     return rMonth === month;

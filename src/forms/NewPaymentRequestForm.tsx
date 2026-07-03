@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { RotateCcw, Wallet, AlertTriangle, FileSignature, Edit3, Target } from "lucide-react";
-import { EXPENSE_TYPES, NON_PROJECT_DEPTS, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { RotateCcw, Wallet, AlertTriangle, FileSignature, Edit3, Target, Users, Clock, Plane, BedDouble } from "lucide-react";
+import { EXPENSE_TYPES, NON_PROJECT_DEPTS, VP_THRESHOLD, CEO_THRESHOLD, TRAVEL_EXPENSE_IDS, TRAVEL_MIN_LEAD_DAYS } from "../constants";
 import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
@@ -20,9 +20,12 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     amount: resubmitFrom.amount || "",
     currency: resubmitFrom.currency || "INR",
     fxRate: resubmitFrom.fxRate || 1,
-    travelFrom: resubmitFrom.travelFrom || "",
-    travelTo: resubmitFrom.travelTo || "",
-    travelDates: resubmitFrom.travelDates || "",
+    travelFrom: resubmitFrom.travel?.fromLocation ?? resubmitFrom.travelFrom ?? "",
+    travelTo: resubmitFrom.travel?.toLocation ?? resubmitFrom.travelTo ?? "",
+    place: resubmitFrom.travel?.place ?? "",
+    travelStart: resubmitFrom.travel?.startDate || resubmitFrom.travel?.checkIn || "",
+    travelEnd: resubmitFrom.travel?.endDate || resubmitFrom.travel?.checkOut || "",
+    urgencyJustification: "", overshootJustification: "",
     invoiceNumber: resubmitFrom.invoiceNumber || "",
     selectedApproverIds: [],
     attachment: null,
@@ -30,9 +33,11 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
   } : {
     expenseTypeId: "", projectId: "", vendor: "", description: "", purpose: "",
     amount: "", currency: "INR", fxRate: 1,
-    travelFrom: "", travelTo: "", travelDates: "", invoiceNumber: "",
+    travelFrom: "", travelTo: "", place: "", travelStart: "", travelEnd: "",
+    urgencyJustification: "", overshootJustification: "", invoiceNumber: "",
     selectedApproverIds: [], attachment: null, linkedPOId: "",
   });
+  const [travellers, setTravellers] = useState(resubmitFrom?.travel?.travellers ? resubmitFrom.travel.travellers.map(t => ({ fullName: t.fullName, age: String(t.age ?? ""), sex: t.sex || "" })) : []);
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // Split one supplier payment across multiple same-department projects, each
@@ -42,7 +47,9 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
 
   const selectedType = EXPENSE_TYPES.find(t => t.id === form.expenseTypeId);
   const isProject = selectedType?.requiresProject || false;
-  const isTravel = selectedType?.name.includes("Travel");
+  const isTravelType = !!selectedType && TRAVEL_EXPENSE_IDS.includes(selectedType.id);
+  const isAccommodation = selectedType?.id === "AC";
+  const poolName = selectedType ? (selectedType.pool || selectedType.name) : null;
   const isVendorPayment = selectedType?.name.includes("Vendor Payment");
   const singleAmountINR = form.currency === "INR" ? parseFloat(form.amount || 0) : parseFloat(form.amount || 0) * parseFloat(form.fxRate || 0);
   // Projects eligible for a split: active project budgets in the raiser's own
@@ -56,6 +63,9 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     return b ? Math.max(0, b.amountINR - getProjectSpend(requests, projectId).total) : 0;
   }
   function setSplitRow(i, patch) { setSplits(splits.map((r, idx) => idx === i ? { ...r, ...patch } : r)); }
+  function setTravellerRow(i, patch) { setTravellers(travellers.map((t, idx) => idx === i ? { ...t, ...patch } : t)); }
+  const travellerStarted = t => t.fullName.trim() || String(t.age).trim() || t.sex;
+  const travellerComplete = t => t.fullName.trim() && String(t.age).trim() && t.sex;
 
   const eligibleApprovers = getEligibleDeptApprovers(user, selectedType, isProject);
   const needsMid = needsBoxBuildMidApproval(user);
@@ -64,9 +74,15 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
 
   const activeBudgets = budgets.filter(b => b.type === "Project" && (b.status === "Active" || b.currentStage === "Active"));
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const monthlyBudget = (!isProject && selectedType) ? getActiveMonthlyBudget(budgets, user.dept, selectedType.name, currentMonth) : null;
-  const monthlyUsage = monthlyBudget ? getMonthlyBudgetUsage(requests, user.dept, selectedType.name, currentMonth) : null;
+  const monthlyBudget = (!isProject && selectedType) ? getActiveMonthlyBudget(budgets, user.dept, poolName, currentMonth) : null;
+  const monthlyUsage = monthlyBudget ? getMonthlyBudgetUsage(requests, user.dept, poolName, currentMonth) : null;
   const monthlyAvailable = monthlyBudget ? Math.max(0, monthlyBudget.amountINR - monthlyUsage.total) : 0;
+  const isOvershoot = !isProject && !!monthlyBudget && amountINR > monthlyAvailable;
+
+  // Urgency: trips starting within TRAVEL_MIN_LEAD_DAYS need a justification.
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const leadDays = form.travelStart ? Math.round((new Date(form.travelStart + "T00:00:00") - new Date(todayISO + "T00:00:00")) / 86400000) : null;
+  const isUrgent = isTravelType && leadDays != null && leadDays < TRAVEL_MIN_LEAD_DAYS;
 
   const projectPOs = isProject && form.projectId ? getApprovedPOsForProject(pos, form.projectId) : [];
   const deptPOs = !isProject && selectedType ? getApprovedPOsForDept(pos, user.dept) : [];
@@ -146,9 +162,27 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
       }
     }
 
+    let travellerRows = [];
+    if (isTravelType) {
+      if (isAccommodation) {
+        if (!form.place.trim()) return setErr("Accommodation location is required");
+      } else {
+        if (!form.travelFrom.trim() || !form.travelTo.trim()) return setErr("From and To locations are required");
+      }
+      if (!form.travelStart || !form.travelEnd) return setErr(isAccommodation ? "Check-in and check-out dates are required" : "Travel start and end dates are required");
+      if (form.travelEnd < form.travelStart) return setErr(isAccommodation ? "Check-out cannot be before check-in" : "End date cannot be before start date");
+      if (isUrgent && !form.urgencyJustification.trim()) return setErr(`This starts in ${leadDays} day(s) — under the ${TRAVEL_MIN_LEAD_DAYS}-day notice. Add an urgency justification.`);
+      if (travellers.some(t => travellerStarted(t) && !travellerComplete(t))) return setErr("Each additional traveller needs a full name, age and sex.");
+      travellerRows = travellers.filter(travellerComplete).map(t => ({ fullName: t.fullName.trim(), age: Number(t.age), sex: t.sex }));
+    }
+
     if (!isProject && selectedType) {
-      if (!monthlyBudget) return setErr(`No active Monthly Budget for ${user.dept} → ${selectedType.name} for ${currentMonth}. Ask Dept Head to raise one first.`);
-      if (amountINR > monthlyAvailable) return setErr(`Exceeds Monthly Budget pool. Available: ₹${(monthlyAvailable / 1000).toFixed(1)}K.`);
+      if (!monthlyBudget) return setErr(`No active Monthly Budget for ${user.dept} → ${poolName} for ${currentMonth}. Ask Dept Head to raise one first.`);
+      if (amountINR > monthlyAvailable) {
+        // Travel may exceed its pool WITH a justification; all other expenses are hard-blocked.
+        if (isTravelType) { if (!form.overshootJustification.trim()) return setErr(`This exceeds the ${poolName} pool (available ₹${(monthlyAvailable / 1000).toFixed(1)}K). Add an over-budget justification to proceed.`); }
+        else return setErr(`Exceeds Monthly Budget pool. Available: ₹${(monthlyAvailable / 1000).toFixed(1)}K.`);
+      }
     }
 
     if (form.linkedPOId) {
@@ -176,7 +210,20 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
       isProject, projectId: useSplit ? null : form.projectId, splits: splitData,
       vendor: form.vendor, description: form.description, purpose: form.purpose,
       amount: useSplit ? splitTotalINR : parseFloat(form.amount), currency: useSplit ? "INR" : form.currency, fxRate: useSplit ? 1 : parseFloat(form.fxRate), amountINR,
-      travelFrom: form.travelFrom, travelTo: form.travelTo, travelDates: form.travelDates,
+      travel: isTravelType ? {
+        subType: selectedType.name,
+        fromLocation: isAccommodation ? "" : form.travelFrom,
+        toLocation: isAccommodation ? "" : form.travelTo,
+        place: isAccommodation ? form.place : "",
+        startDate: isAccommodation ? "" : form.travelStart,
+        endDate: isAccommodation ? "" : form.travelEnd,
+        checkIn: isAccommodation ? form.travelStart : "",
+        checkOut: isAccommodation ? form.travelEnd : "",
+        travellers: travellerRows,
+        leadDays, urgent: isUrgent,
+        urgencyJustification: isUrgent ? form.urgencyJustification.trim() : "",
+        overshootJustification: isOvershoot ? form.overshootJustification.trim() : "",
+      } : undefined,
       invoiceNumber: form.invoiceNumber, attachment: form.attachment,
       linkedPOId: useSplit ? null : (form.linkedPOId || null), linkedPONumber: useSplit ? null : (linkedPOInfo?.poNumber || null),
       selectedApprovers: selectedApproverIds,
@@ -388,7 +435,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
               <div className={`rounded-lg p-3 border ${amountINR > monthlyAvailable ? "bg-red-50 border-red-200" : monthlyUsage.total / monthlyBudget.amountINR > 0.8 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <Target className="w-4 h-4 text-slate-700" />
-                  <div className="text-xs font-bold text-slate-900">📊 {user.dept} Monthly Pool — {selectedType.name}</div>
+                  <div className="text-xs font-bold text-slate-900">📊 {user.dept} Monthly Pool — {poolName}</div>
                 </div>
                 <div className="text-xs text-slate-700 mb-1">Approved by <strong>{monthlyBudget.approvedBy || monthlyBudget.requesterName}</strong> · Available to all {user.dept} members</div>
                 <div className="grid grid-cols-3 gap-2 text-xs mb-2">
@@ -396,7 +443,14 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
                   <div className="bg-white rounded p-1.5"><div className="text-slate-500">Used</div><div className="font-bold">₹{(monthlyUsage.total / 1000).toFixed(1)}K</div></div>
                   <div className="bg-white rounded p-1.5"><div className="text-slate-500">Available</div><div className="font-bold text-emerald-700">₹{(monthlyAvailable / 1000).toFixed(1)}K</div></div>
                 </div>
-                {amountINR > monthlyAvailable && <div className="text-xs text-red-700 font-semibold">⚠ Exceeds available budget. Ask Dept Head for an Extension.</div>}
+                {amountINR > monthlyAvailable && (isTravelType ? (
+                  <div className="mt-1">
+                    <div className="text-xs text-red-700 font-semibold mb-1">⚠ Exceeds the available pool by ₹{((amountINR - monthlyAvailable) / 1000).toFixed(1)}K. Allowed with a justification:</div>
+                    <textarea value={form.overshootJustification} onChange={(e) => setForm({ ...form, overshootJustification: e.target.value })} rows={2} placeholder="Why does this travel need to exceed the allocated budget?" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                  </div>
+                ) : (
+                  <div className="text-xs text-red-700 font-semibold">⚠ Exceeds available budget. Ask Dept Head for an Extension.</div>
+                ))}
               </div>
             ) : (
               <div className="rounded-lg p-3 bg-amber-50 border border-amber-200 text-xs">
@@ -404,7 +458,7 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
                   <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                   <div>
                     <div className="font-bold text-amber-900">No Monthly Budget Pool for this category</div>
-                    <div className="text-amber-800 mt-0.5">{user.dept} doesn't have an active Monthly Budget for <strong>{selectedType.name}</strong> in {currentMonth}. Ask your Dept Head to raise one.</div>
+                    <div className="text-amber-800 mt-0.5">{user.dept} doesn't have an active Monthly Budget for <strong>{poolName}</strong> in {currentMonth}. Ask your Dept Head to raise one.</div>
                   </div>
                 </div>
               </div>
@@ -412,11 +466,47 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
           </>
         )}
 
-        {isTravel && (
-          <div className="grid md:grid-cols-3 gap-4">
-            <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">From</label><input value={form.travelFrom} onChange={(e) => setForm({ ...form, travelFrom: e.target.value })} placeholder="Delhi" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-            <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">To</label><input value={form.travelTo} onChange={(e) => setForm({ ...form, travelTo: e.target.value })} placeholder="Bangalore" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-            <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Dates</label><input value={form.travelDates} onChange={(e) => setForm({ ...form, travelDates: e.target.value })} placeholder="15-18 May 2026" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+        {isTravelType && (
+          <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 space-y-3">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-sky-900">{isAccommodation ? <><BedDouble className="w-4 h-4" />Accommodation details</> : <><Plane className="w-4 h-4" />Travel details</>}</div>
+            {isAccommodation ? (
+              <>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Location / Hotel *</label><input value={form.place} onChange={(e) => setForm({ ...form, place: e.target.value })} placeholder="Hotel name, city" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Check-in *</label><input type="date" value={form.travelStart} onChange={(e) => setForm({ ...form, travelStart: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Check-out *</label><input type="date" value={form.travelEnd} min={form.travelStart || undefined} onChange={(e) => setForm({ ...form, travelEnd: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">From *</label><input value={form.travelFrom} onChange={(e) => setForm({ ...form, travelFrom: e.target.value })} placeholder="Delhi" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">To *</label><input value={form.travelTo} onChange={(e) => setForm({ ...form, travelTo: e.target.value })} placeholder="Bangalore" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Start date *</label><input type="date" value={form.travelStart} onChange={(e) => setForm({ ...form, travelStart: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">End date *</label><input type="date" value={form.travelEnd} min={form.travelStart || undefined} onChange={(e) => setForm({ ...form, travelEnd: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+                </div>
+              </>
+            )}
+            {isUrgent && (
+              <div className="rounded-lg p-2.5 border bg-amber-50 border-amber-200">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900 mb-1"><Clock className="w-4 h-4" />Short notice — starts in {leadDays} day(s)</div>
+                <textarea value={form.urgencyJustification} onChange={(e) => setForm({ ...form, urgencyJustification: e.target.value })} rows={2} placeholder={`Why is this needed under the ${TRAVEL_MIN_LEAD_DAYS}-day notice?`} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+            )}
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5 text-xs font-bold text-slate-700"><Users className="w-4 h-4" />Additional travellers <span className="font-normal text-slate-500">(optional)</span></div>
+              {travellers.map((t, i) => (
+                <div key={i} className="flex items-center gap-2 flex-wrap mb-1.5">
+                  <input value={t.fullName} onChange={(e) => setTravellerRow(i, { fullName: e.target.value })} placeholder="Full name" className="flex-1 min-w-[150px] px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                  <input type="number" min="0" value={t.age} onChange={(e) => setTravellerRow(i, { age: e.target.value })} placeholder="Age" className="w-20 px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                  <select value={t.sex} onChange={(e) => setTravellerRow(i, { sex: e.target.value })} className="w-28 px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"><option value="">Sex</option><option>Male</option><option>Female</option><option>Other</option></select>
+                  <button type="button" onClick={() => setTravellers(travellers.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-600 px-1">✕</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setTravellers([...travellers, { fullName: "", age: "", sex: "" }])} className="text-xs font-semibold text-blue-700 hover:text-blue-900">+ Add traveller</button>
+            </div>
           </div>
         )}
 
