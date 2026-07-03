@@ -283,7 +283,10 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
                 </optgroup>
               )}
               <optgroup label="Non-Project Expenses">
-                {EXPENSE_TYPES.filter(t => t.category === "Non-Project").map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {EXPENSE_TYPES.filter(t => t.category === "Non-Project" && !TRAVEL_EXPENSE_IDS.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </optgroup>
+              <optgroup label="Travel & Accommodation">
+                {EXPENSE_TYPES.filter(t => TRAVEL_EXPENSE_IDS.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </optgroup>
             </select>
             {NON_PROJECT_DEPTS.includes(user.dept) && <p className="text-xs text-slate-500 mt-1">{user.dept} cannot raise project expenses.</p>}
