@@ -44,6 +44,19 @@ export const EXPENSE_TYPES = [
 // travel-specific fields (dates, urgency, travellers) inline in the payment form.
 export const TRAVEL_POOL = "Travel & Accommodation";
 export const TRAVEL_EXPENSE_IDS = ["TR", "AC"];
+// Accommodation per-night spend cap by the raiser's role (INR). Total stay must be
+// within cap × nights. Employee tier (Employee / read-only / Accountant) uses the
+// default; the head roles are the "manager" tier.
+export const ACCOMMODATION_DAILY_CAP_DEFAULT = 3000;
+export const ACCOMMODATION_DAILY_CAP_BY_ROLE = {
+  DeptApprover: 5000,
+  BoxBuildMidApprover: 5000,
+  FinanceHead: 5000,
+  SuperManager: 7000, // "Special Access"
+  VP: 7000,
+  CEO: 11000,
+};
+export const accommodationDailyCap = (role) => ACCOMMODATION_DAILY_CAP_BY_ROLE[role] ?? ACCOMMODATION_DAILY_CAP_DEFAULT;
 // Minimum lead time (days) before travel start; a shorter lead requires an
 // urgency justification.
 export const TRAVEL_MIN_LEAD_DAYS = 4;

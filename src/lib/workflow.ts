@@ -108,7 +108,7 @@ export function getStageLabel(stage, kind = "Payment") {
   }
   if (kind === "PO" || kind === "PI") {
     return {
-      "BoxBuildMid": "Pending Delivery Head (Arun)",
+      "BoxBuildMid": "Pending Delivery Head",
       "DeptApproval": "Pending Dept Head",
       "VP": "Pending VP",
       "SuperManagerApproval": "Pending Stuti + Sarthak",
@@ -121,7 +121,7 @@ export function getStageLabel(stage, kind = "Payment") {
     }[stage] || stage;
   }
   return {
-    "BoxBuildMid": "Pending Delivery Head (Arun)",
+    "BoxBuildMid": "Pending Delivery Head",
     "DeptApproval": "Pending Dept Approval",
     "VP": "Pending VP",
     "CEO": "Pending CEO",

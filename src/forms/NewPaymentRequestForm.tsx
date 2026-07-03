@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { RotateCcw, Wallet, AlertTriangle, FileSignature, Edit3, Target, Users, Clock, Plane, BedDouble } from "lucide-react";
-import { EXPENSE_TYPES, NON_PROJECT_DEPTS, VP_THRESHOLD, CEO_THRESHOLD, TRAVEL_EXPENSE_IDS, TRAVEL_MIN_LEAD_DAYS } from "../constants";
+import { RotateCcw, Wallet, AlertTriangle, FileSignature, Edit3, Target, BedDouble, Clock } from "lucide-react";
+import { EXPENSE_TYPES, NON_PROJECT_DEPTS, VP_THRESHOLD, CEO_THRESHOLD, TRAVEL_EXPENSE_IDS, TRAVEL_MIN_LEAD_DAYS, accommodationDailyCap } from "../constants";
 import { isReadOnly } from "../lib/access";
-import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
+import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel, computeNextStage } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
 import { getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage, getApprovedPOsForProject, getApprovedPOsForDept, getPOUsage, getPOAvailable, getProjectSpend } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
 import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
+import { TravelFields } from "./TravelFields";
 
 // ============ NEW PAYMENT REQUEST FORM ============
 export function NewPaymentRequestForm({ user, requests, budgets, pos, saveRequests, onSuccess, resubmitFrom = null }) {
@@ -25,8 +26,10 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     place: resubmitFrom.travel?.place ?? "",
     travelStart: resubmitFrom.travel?.startDate || resubmitFrom.travel?.checkIn || "",
     travelEnd: resubmitFrom.travel?.endDate || resubmitFrom.travel?.checkOut || "",
-    urgencyJustification: "", overshootJustification: "",
+    urgencyJustification: "", overshootJustification: "", accomCapJustification: "",
     invoiceNumber: resubmitFrom.invoiceNumber || "",
+    pnr: resubmitFrom.travel?.pnr ?? "",
+    linkedTripId: resubmitFrom.travel?.linkedTripId ?? "",
     selectedApproverIds: [],
     attachment: null,
     linkedPOId: resubmitFrom.linkedPOId || "",
@@ -34,12 +37,34 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     expenseTypeId: "", projectId: "", vendor: "", description: "", purpose: "",
     amount: "", currency: "INR", fxRate: 1,
     travelFrom: "", travelTo: "", place: "", travelStart: "", travelEnd: "",
-    urgencyJustification: "", overshootJustification: "", invoiceNumber: "",
+    urgencyJustification: "", overshootJustification: "", accomCapJustification: "", invoiceNumber: "", pnr: "", linkedTripId: "",
     selectedApproverIds: [], attachment: null, linkedPOId: "",
   });
-  const [travellers, setTravellers] = useState(resubmitFrom?.travel?.travellers ? resubmitFrom.travel.travellers.map(t => ({ fullName: t.fullName, age: String(t.age ?? ""), sex: t.sex || "" })) : []);
+  const rt = resubmitFrom?.travel?.subType === "Travel" ? resubmitFrom.travel : null;
+  const [tf, setTf] = useState({
+    fullName: rt?.fullName || user.name || "",
+    contactNumber: rt?.contactNumber || "",
+    email: rt?.email || user.email || "",
+    tripType: rt?.tripType || "Round Trip",
+    departureCity: rt?.departureCity || "",
+    arrivalCity: rt?.arrivalCity || "",
+    departureDate: rt?.departureDate || "",
+    departureFlightTime: rt?.departureFlightTime || "",
+    returnDate: rt?.returnDate || "",
+    returnFlightTime: rt?.returnFlightTime || "",
+    reasons: rt?.reasons || [],
+    reasonOther: rt?.reasonOther || "",
+    isEmergency: rt?.isEmergency || "No",
+    emergencyReason: rt?.emergencyReason || "",
+    meetingsCount: rt?.meetings != null ? String(rt.meetings.length) : (rt?.meetingsCount != null ? String(rt.meetingsCount) : ""),
+    meetings: rt?.meetings ? rt.meetings.map(m => ({ orgName: m.orgName || "", meetingWith: m.meetingWith || "" })) : [],
+    peopleCount: rt?.travellers != null ? String(rt.travellers.length) : "",
+    travellers: rt?.travellers ? rt.travellers.map(t => ({ name: t.name || t.fullName || "", age: String(t.age ?? ""), sex: t.sex || "" })) : [],
+    desiredOutcomes: rt?.desiredOutcomes || "",
+  });
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [ackPending, setAckPending] = useState(false);
   // Split one supplier payment across multiple same-department projects, each
   // drawn against its own budget (for accurate per-project spend reporting).
   const [splitMode, setSplitMode] = useState(false);
@@ -63,12 +88,14 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     return b ? Math.max(0, b.amountINR - getProjectSpend(requests, projectId).total) : 0;
   }
   function setSplitRow(i, patch) { setSplits(splits.map((r, idx) => idx === i ? { ...r, ...patch } : r)); }
-  function setTravellerRow(i, patch) { setTravellers(travellers.map((t, idx) => idx === i ? { ...t, ...patch } : t)); }
-  const travellerStarted = t => t.fullName.trim() || String(t.age).trim() || t.sex;
-  const travellerComplete = t => t.fullName.trim() && String(t.age).trim() && t.sex;
 
-  const eligibleApprovers = getEligibleDeptApprovers(user, selectedType, isProject);
+  // Segregation of duties: never route a request to its own raiser (e.g. a dept head
+  // raising their own request), so drop the raiser from the eligible set. If that
+  // leaves no in-department approver (a sole head), the dept stage is skipped and the
+  // request escalates to the next authority (Finance Head / VP) — see initialStage.
+  const eligibleApprovers = getEligibleDeptApprovers(user, selectedType, isProject).filter(a => a.id !== user.id);
   const needsMid = needsBoxBuildMidApproval(user);
+  const soleHead = !needsMid && eligibleApprovers.length === 0;
   const isOdmProject = user.dept === "ODM" && isProject && user.role === "Employee";
   const isMultiApprover = eligibleApprovers.length > 1;
 
@@ -81,8 +108,34 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
 
   // Urgency: trips starting within TRAVEL_MIN_LEAD_DAYS need a justification.
   const todayISO = new Date().toISOString().slice(0, 10);
-  const leadDays = form.travelStart ? Math.round((new Date(form.travelStart + "T00:00:00") - new Date(todayISO + "T00:00:00")) / 86400000) : null;
-  const isUrgent = isTravelType && leadDays != null && leadDays < TRAVEL_MIN_LEAD_DAYS;
+  const travelStartRef = isTravelType ? (isAccommodation ? form.travelStart : tf.departureDate) : "";
+  const leadDays = travelStartRef ? Math.round((new Date(travelStartRef + "T00:00:00") - new Date(todayISO + "T00:00:00")) / 86400000) : null;
+  const isShortNotice = isTravelType && leadDays != null && leadDays < TRAVEL_MIN_LEAD_DAYS;
+
+  // Accommodation per-night cap by the raiser's role. Total stay must be within
+  // cap × nights (nights = check-out − check-in).
+  const accomCap = accommodationDailyCap(user.role);
+  const accomNights = (isAccommodation && form.travelStart && form.travelEnd && form.travelEnd > form.travelStart)
+    ? Math.round((new Date(form.travelEnd + "T00:00:00") - new Date(form.travelStart + "T00:00:00")) / 86400000) : 0;
+  const accomMax = accomNights * accomCap;
+  const accomOverCap = isAccommodation && accomNights > 0 && amountINR > accomMax;
+
+  // Optional cross-link: connect the Travel and Accommodation raised for the same trip.
+  const tripLabel = (x) => {
+    const t = x.travel || {};
+    const where = t.subType === "Accommodation" ? (t.place || "") : [t.departureCity || t.fromLocation, t.arrivalCity || t.toLocation].filter(Boolean).join(" → ");
+    return `${t.subType} · ${x.id}${where ? ` · ${where}` : ""}`;
+  };
+  const linkCounterpart = isAccommodation ? "Travel" : "Accommodation";
+  const linkTargets = isTravelType
+    ? requests.filter(x => x.requesterId === user.id && x.travel?.subType === linkCounterpart && x.id !== resubmitFrom?.id && !["Rejected", "Cancelled"].includes(x.status))
+        .sort((a, b) => +new Date(b.createdDate) - +new Date(a.createdDate)).slice(0, 25)
+    : [];
+
+  // Completed trips (Paid) by this user with no Travel Outcome Form yet. Raising
+  // another Travel entry requires acknowledging a disclaimer about them.
+  const pendingOutcomes = requests.filter(x => x.requesterId === user.id && x.travel?.subType === "Travel" && x.status === "Paid" && !x.postTravel);
+  const hasPendingOutcomes = isTravelType && !isAccommodation && pendingOutcomes.length > 0;
 
   const projectPOs = isProject && form.projectId ? getApprovedPOsForProject(pos, form.projectId) : [];
   const deptPOs = !isProject && selectedType ? getApprovedPOsForDept(pos, user.dept) : [];
@@ -113,11 +166,11 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     if (isReadOnly(user)) return setErr("Your account is read-only and cannot raise requests.");
     if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
     if (!form.expenseTypeId) return setErr("Select expense type");
-    if (!form.description.trim()) return setErr("Description required");
+    if (!isTravelType && !form.description.trim()) return setErr("Description required");
     if ((!useSplit && !form.amount) || amountINR <= 0) return setErr(useSplit ? "Add at least one project with an amount to the split" : "Valid amount required");
     if (form.currency !== "INR" && (!form.fxRate || parseFloat(form.fxRate) <= 0)) return setErr("Valid FX rate required");
     if (isProject && !useSplit && !form.projectId) return setErr("Project ID required");
-    if (!isProject && !form.purpose.trim()) return setErr("Purpose mandatory");
+    if (!isProject && !isTravelType && !form.purpose.trim()) return setErr("Purpose mandatory");
     if (!form.attachment) return setErr("Attachment is mandatory");
 
     let selectedApproverIds = [];
@@ -162,18 +215,29 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
       }
     }
 
-    let travellerRows = [];
-    if (isTravelType) {
-      if (isAccommodation) {
-        if (!form.place.trim()) return setErr("Accommodation location is required");
-      } else {
-        if (!form.travelFrom.trim() || !form.travelTo.trim()) return setErr("From and To locations are required");
+    if (isTravelType && isAccommodation) {
+      if (!form.place.trim()) return setErr("Accommodation location is required");
+      if (!form.travelStart || !form.travelEnd) return setErr("Check-in and check-out dates are required");
+      if (form.travelEnd < form.travelStart) return setErr("Check-out cannot be before check-in");
+      if (accomOverCap && !form.accomCapJustification.trim()) return setErr(`Accommodation exceeds your cap (₹${accomCap.toLocaleString("en-IN")}/night × ${accomNights} = ₹${accomMax.toLocaleString("en-IN")} max). Add a justification to override.`);
+      if (isShortNotice && !form.urgencyJustification.trim()) return setErr(`This starts in ${leadDays} day(s) — under the ${TRAVEL_MIN_LEAD_DAYS}-day notice. Add an urgency justification.`);
+    } else if (isTravelType) {
+      if (!tf.fullName.trim() || !tf.contactNumber.trim() || !tf.email.trim()) return setErr("Full name, contact number and email are required");
+      if (!tf.departureCity.trim() || !tf.arrivalCity.trim()) return setErr("Departure and arrival cities are required");
+      if (!tf.departureDate) return setErr("Departure date is required");
+      if (tf.tripType === "Round Trip") {
+        if (!tf.returnDate) return setErr("Return date is required for a round trip");
+        if (tf.returnDate < tf.departureDate) return setErr("Return date cannot be before departure date");
       }
-      if (!form.travelStart || !form.travelEnd) return setErr(isAccommodation ? "Check-in and check-out dates are required" : "Travel start and end dates are required");
-      if (form.travelEnd < form.travelStart) return setErr(isAccommodation ? "Check-out cannot be before check-in" : "End date cannot be before start date");
-      if (isUrgent && !form.urgencyJustification.trim()) return setErr(`This starts in ${leadDays} day(s) — under the ${TRAVEL_MIN_LEAD_DAYS}-day notice. Add an urgency justification.`);
-      if (travellers.some(t => travellerStarted(t) && !travellerComplete(t))) return setErr("Each additional traveller needs a full name, age and sex.");
-      travellerRows = travellers.filter(travellerComplete).map(t => ({ fullName: t.fullName.trim(), age: Number(t.age), sex: t.sex }));
+      if (tf.reasons.length === 0) return setErr("Select at least one reason for travelling");
+      if (tf.reasons.includes("Other") && !tf.reasonOther.trim()) return setErr("Please specify the other reason for travelling");
+      if (isShortNotice && !tf.emergencyReason.trim()) return setErr(`This starts in ${leadDays} day(s) — explain the reason for emergency travel.`);
+      if (!String(tf.meetingsCount).trim()) return setErr("Number of meetings aligned is required");
+      if (tf.meetings.some(m => !m.orgName.trim())) return setErr("Each meeting needs an organisation name");
+      if (!String(tf.peopleCount).trim()) return setErr("Number of people travelling is required (enter 0 if travelling alone)");
+      if (tf.travellers.some(t => !t.name.trim() || !String(t.age).trim() || !t.sex)) return setErr("Each additional traveller needs a name, age and sex");
+      if (!tf.desiredOutcomes.trim()) return setErr("Desired outcomes are required");
+      if (hasPendingOutcomes && !ackPending) return setErr("You have pending Travel Outcome Form(s). Tick the disclaimer to proceed.");
     }
 
     if (!isProject && selectedType) {
@@ -195,7 +259,14 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
 
     setSubmitting(true);
     const now = new Date().toISOString();
-    const initialStage = needsMid ? "BoxBuildMid" : "DeptApproval";
+    // Sole head raising their own request: skip the dept stage (they can't self-approve)
+    // and escalate to the next authority — Finance Head raiser -> VP, everyone else ->
+    // the workflow's next stage after DeptApproval (Finance Head).
+    const initialStage = needsMid
+      ? "BoxBuildMid"
+      : (soleHead
+          ? (user.role === "FinanceHead" ? "VP" : computeNextStage({ kind: "Payment", amountINR }, "DeptApproval", null))
+          : "DeptApproval");
     const linkedPOInfo = form.linkedPOId ? pos.find(p => p.id === form.linkedPOId) : null;
     // Documented per-project breakdown for the spend report.
     const splitData = useSplit ? splitRows.map(r => {
@@ -203,27 +274,54 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
       const po = pos.find(p => p.id === r.linkedPOId);
       return { projectId: r.projectId, projectName: b?.projectName || r.projectId, amountINR: parseFloat(r.amount), linkedPOId: r.linkedPOId, linkedPONumber: po?.poNumber || null };
     }) : undefined;
+
+    // Travel/Accommodation sub-object + auto-generated description/purpose (travel has
+    // its own field set, so the generic Description/Purpose inputs are hidden for it).
+    const travelReasonText = tf.reasons.filter(r => r !== "Other").concat(tf.reasons.includes("Other") && tf.reasonOther.trim() ? [tf.reasonOther.trim()] : []).join(", ");
+    const linkedTarget = form.linkedTripId ? requests.find(x => x.id === form.linkedTripId) : null;
+    const travelObj = !isTravelType ? undefined : (isAccommodation ? {
+      subType: "Accommodation",
+      linkedTripId: form.linkedTripId || "", linkedTripLabel: linkedTarget ? tripLabel(linkedTarget) : "",
+      place: form.place, checkIn: form.travelStart, checkOut: form.travelEnd,
+      dailyCap: accomCap, nights: accomNights,
+      capOverrideJustification: accomOverCap ? form.accomCapJustification.trim() : "",
+      leadDays, urgent: isShortNotice,
+      urgencyJustification: isShortNotice ? form.urgencyJustification.trim() : "",
+      overshootJustification: isOvershoot ? form.overshootJustification.trim() : "",
+    } : {
+      subType: "Travel",
+      linkedTripId: form.linkedTripId || "", linkedTripLabel: linkedTarget ? tripLabel(linkedTarget) : "",
+      pnr: form.pnr.trim(),
+      fullName: tf.fullName.trim(), contactNumber: tf.contactNumber.trim(), email: tf.email.trim(),
+      tripType: tf.tripType,
+      departureCity: tf.departureCity.trim(), arrivalCity: tf.arrivalCity.trim(),
+      departureDate: tf.departureDate, departureFlightTime: tf.departureFlightTime,
+      returnDate: tf.tripType === "Round Trip" ? tf.returnDate : "", returnFlightTime: tf.tripType === "Round Trip" ? tf.returnFlightTime : "",
+      reasons: tf.reasons, reasonOther: tf.reasons.includes("Other") ? tf.reasonOther.trim() : "",
+      isEmergency: isShortNotice ? "Yes" : "No",
+      emergencyReason: isShortNotice ? tf.emergencyReason.trim() : "",
+      meetingsCount: Number(tf.meetingsCount) || tf.meetings.length,
+      meetings: tf.meetings.map(m => ({ orgName: m.orgName.trim(), meetingWith: m.meetingWith.trim() })),
+      peopleCount: Number(tf.peopleCount) || tf.travellers.length,
+      travellers: tf.travellers.map(t => ({ name: t.name.trim(), age: Number(t.age), sex: t.sex })),
+      desiredOutcomes: tf.desiredOutcomes.trim(),
+      leadDays, urgent: isShortNotice,
+      overshootJustification: isOvershoot ? form.overshootJustification.trim() : "",
+      // mirrors so existing route/date rendering keeps working
+      fromLocation: tf.departureCity.trim(), toLocation: tf.arrivalCity.trim(), startDate: tf.departureDate, endDate: tf.returnDate,
+    });
+    const travelDescription = !isTravelType ? "" : (isAccommodation ? `Accommodation: ${form.place.trim()}` : `Travel: ${tf.departureCity.trim()} → ${tf.arrivalCity.trim()}`);
+    const travelPurpose = !isTravelType ? "" : (isAccommodation ? "Accommodation stay" : (travelReasonText || "Travel"));
     const newRequest = {
       id: "EXP-" + Date.now(), kind: "Payment", createdDate: now,
       requesterId: user.id, requesterName: user.name, requesterEmail: user.email, dept: user.dept,
       expenseTypeId: form.expenseTypeId, expenseTypeName: selectedType.name, category: selectedType.category,
       isProject, projectId: useSplit ? null : form.projectId, splits: splitData,
-      vendor: form.vendor, description: form.description, purpose: form.purpose,
+      vendor: form.vendor,
+      description: isTravelType ? travelDescription : form.description,
+      purpose: isTravelType ? travelPurpose : form.purpose,
       amount: useSplit ? splitTotalINR : parseFloat(form.amount), currency: useSplit ? "INR" : form.currency, fxRate: useSplit ? 1 : parseFloat(form.fxRate), amountINR,
-      travel: isTravelType ? {
-        subType: selectedType.name,
-        fromLocation: isAccommodation ? "" : form.travelFrom,
-        toLocation: isAccommodation ? "" : form.travelTo,
-        place: isAccommodation ? form.place : "",
-        startDate: isAccommodation ? "" : form.travelStart,
-        endDate: isAccommodation ? "" : form.travelEnd,
-        checkIn: isAccommodation ? form.travelStart : "",
-        checkOut: isAccommodation ? form.travelEnd : "",
-        travellers: travellerRows,
-        leadDays, urgent: isUrgent,
-        urgencyJustification: isUrgent ? form.urgencyJustification.trim() : "",
-        overshootJustification: isOvershoot ? form.overshootJustification.trim() : "",
-      } : undefined,
+      travel: travelObj,
       invoiceNumber: form.invoiceNumber, attachment: form.attachment,
       linkedPOId: useSplit ? null : (form.linkedPOId || null), linkedPONumber: useSplit ? null : (linkedPOInfo?.poNumber || null),
       selectedApprovers: selectedApproverIds,
@@ -239,16 +337,23 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     onSuccess();
   }
 
+  // Preview only — resolve the real role-holder from the live roster (their name if
+  // exactly one holds the role, else a generic role label). Actual routing is by role
+  // via the workflow engine + server guard, not these labels.
+  const roster = getRoster();
+  const roleLabel = (role, fallback) => { const us = roster.filter(u => u.role === role); return us.length === 1 ? us[0].name : fallback; };
   const flowSteps = [user.name];
-  if (needsMid) flowSteps.push("Arun (Delivery Head)");
-  if (isOdmProject) flowSteps.push("Shreya + Akash (both)");
-  else if (isMultiApprover && form.selectedApproverIds.length > 0) flowSteps.push(form.selectedApproverIds.map(id => getRoster().find(u => u.id === id)?.name).filter(Boolean).join(" + "));
+  if (needsMid) flowSteps.push(roleLabel("BoxBuildMidApprover", "Delivery Head"));
+  else if (isOdmProject) flowSteps.push(eligibleApprovers.map(a => a.name).join(" + ") || "Dept Heads");
+  else if (isMultiApprover && form.selectedApproverIds.length > 0) flowSteps.push(form.selectedApproverIds.map(id => roster.find(u => u.id === id)?.name).filter(Boolean).join(" + "));
   else if (eligibleApprovers.length === 1) flowSteps.push(eligibleApprovers[0].name);
   else if (isMultiApprover) flowSteps.push("<select approver>");
-  flowSteps.push("Ravi (Finance Head)");
-  if (amountINR >= VP_THRESHOLD && amountINR < CEO_THRESHOLD) flowSteps.push("Mahendra (VP)");
-  if (amountINR >= CEO_THRESHOLD) flowSteps.push("CEO");
-  flowSteps.push("Divyanshu (Accountant)");
+  else if (!soleHead) flowSteps.push("Dept Head");
+  // Sole Finance Head raising their own request skips the Finance Head step too.
+  if (!(soleHead && user.role === "FinanceHead")) flowSteps.push(roleLabel("FinanceHead", "Finance Head"));
+  if (amountINR >= VP_THRESHOLD && amountINR < CEO_THRESHOLD) flowSteps.push(roleLabel("VP", "VP"));
+  if (amountINR >= CEO_THRESHOLD) flowSteps.push(roleLabel("CEO", "CEO"));
+  flowSteps.push(roleLabel("Accountant", "Accountant"));
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 max-w-3xl">
@@ -283,7 +388,10 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
                 </optgroup>
               )}
               <optgroup label="Non-Project Expenses">
-                {EXPENSE_TYPES.filter(t => t.category === "Non-Project").map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {EXPENSE_TYPES.filter(t => t.category === "Non-Project" && !TRAVEL_EXPENSE_IDS.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </optgroup>
+              <optgroup label="Travel & Accommodation">
+                {EXPENSE_TYPES.filter(t => TRAVEL_EXPENSE_IDS.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </optgroup>
             </select>
             {NON_PROJECT_DEPTS.includes(user.dept) && <p className="text-xs text-slate-500 mt-1">{user.dept} cannot raise project expenses.</p>}
@@ -427,10 +535,12 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
 
         {!isProject && selectedType && (
           <>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Purpose *</label>
-              <input value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} placeholder="e.g. Quarterly team offsite" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-            </div>
+            {!isTravelType && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Purpose *</label>
+                <input value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} placeholder="e.g. Quarterly team offsite" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+            )}
             {monthlyBudget ? (
               <div className={`rounded-lg p-3 border ${amountINR > monthlyAvailable ? "bg-red-50 border-red-200" : monthlyUsage.total / monthlyBudget.amountINR > 0.8 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
                 <div className="flex items-center gap-1.5 mb-1.5">
@@ -466,47 +576,55 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
           </>
         )}
 
-        {isTravelType && (
+        {hasPendingOutcomes && (
+          <div className="rounded-lg border border-red-300 bg-red-50 p-3">
+            <div className="flex items-center gap-1.5 text-sm font-bold text-red-800 mb-1"><AlertTriangle className="w-4 h-4" />Pending Travel Outcome Form{pendingOutcomes.length > 1 ? "s" : ""}</div>
+            <div className="text-xs text-red-700 mb-2">You have {pendingOutcomes.length} completed trip{pendingOutcomes.length > 1 ? "s" : ""} without a Travel Outcome Form. File {pendingOutcomes.length > 1 ? "them" : "it"} under <strong>My Requests</strong> → open the trip below → click <strong>“Fill post-travel form”</strong>:</div>
+            <ul className="text-xs text-red-800 list-disc ml-5 mb-2 space-y-0.5">
+              {pendingOutcomes.map(o => <li key={o.id}>{o.description} · {o.createdDate ? new Date(o.createdDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : ""} · <span className="font-mono">{o.id}</span></li>)}
+            </ul>
+            <label className="flex items-start gap-2 text-xs text-red-900 cursor-pointer">
+              <input type="checkbox" checked={ackPending} onChange={(e) => setAckPending(e.target.checked)} className="w-4 h-4 mt-0.5 shrink-0" />
+              <span><strong>Disclaimer:</strong> I acknowledge I have pending Travel Outcome Form(s) and will submit them promptly. Repeatedly leaving trip outcomes unfiled may affect future travel approvals.</span>
+            </label>
+          </div>
+        )}
+
+        {isTravelType && (isAccommodation ? (
           <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 space-y-3">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-sky-900">{isAccommodation ? <><BedDouble className="w-4 h-4" />Accommodation details</> : <><Plane className="w-4 h-4" />Travel details</>}</div>
-            {isAccommodation ? (
-              <>
-                <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Location / Hotel *</label><input value={form.place} onChange={(e) => setForm({ ...form, place: e.target.value })} placeholder="Hotel name, city" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Check-in *</label><input type="date" value={form.travelStart} onChange={(e) => setForm({ ...form, travelStart: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Check-out *</label><input type="date" value={form.travelEnd} min={form.travelStart || undefined} onChange={(e) => setForm({ ...form, travelEnd: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+            <div className="flex items-center gap-1.5 text-xs font-bold text-sky-900"><BedDouble className="w-4 h-4" />Accommodation details</div>
+            <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Location / Hotel *</label><input value={form.place} onChange={(e) => setForm({ ...form, place: e.target.value })} placeholder="Hotel name, city" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Check-in *</label><input type="date" min={todayISO} value={form.travelStart} onChange={(e) => setForm({ ...form, travelStart: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+              <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Check-out *</label><input type="date" value={form.travelEnd} min={form.travelStart || todayISO} onChange={(e) => setForm({ ...form, travelEnd: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+            </div>
+            <div className={`rounded-lg p-2.5 border text-xs ${accomOverCap ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}>
+              <div className="text-slate-800">Your accommodation cap: <strong>₹{accomCap.toLocaleString("en-IN")}/night</strong>{accomNights > 0 ? <> × {accomNights} night{accomNights > 1 ? "s" : ""} = <strong>₹{accomMax.toLocaleString("en-IN")}</strong> max</> : <> (set check-in/out to see the max)</>}</div>
+              {accomOverCap && (
+                <div className="mt-1">
+                  <div className="text-red-700 font-semibold mb-1">⚠ Exceeds your cap by ₹{(amountINR - accomMax).toLocaleString("en-IN")}. Allowed with a justification:</div>
+                  <textarea value={form.accomCapJustification} onChange={(e) => setForm({ ...form, accomCapJustification: e.target.value })} rows={2} placeholder="Why does this stay need to exceed your accommodation cap?" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">From *</label><input value={form.travelFrom} onChange={(e) => setForm({ ...form, travelFrom: e.target.value })} placeholder="Delhi" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">To *</label><input value={form.travelTo} onChange={(e) => setForm({ ...form, travelTo: e.target.value })} placeholder="Bangalore" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Start date *</label><input type="date" value={form.travelStart} onChange={(e) => setForm({ ...form, travelStart: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">End date *</label><input type="date" value={form.travelEnd} min={form.travelStart || undefined} onChange={(e) => setForm({ ...form, travelEnd: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-                </div>
-              </>
-            )}
-            {isUrgent && (
+              )}
+            </div>
+            {isShortNotice && (
               <div className="rounded-lg p-2.5 border bg-amber-50 border-amber-200">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900 mb-1"><Clock className="w-4 h-4" />Short notice — starts in {leadDays} day(s)</div>
                 <textarea value={form.urgencyJustification} onChange={(e) => setForm({ ...form, urgencyJustification: e.target.value })} rows={2} placeholder={`Why is this needed under the ${TRAVEL_MIN_LEAD_DAYS}-day notice?`} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               </div>
             )}
-            <div>
-              <div className="flex items-center gap-1.5 mb-1.5 text-xs font-bold text-slate-700"><Users className="w-4 h-4" />Additional travellers <span className="font-normal text-slate-500">(optional)</span></div>
-              {travellers.map((t, i) => (
-                <div key={i} className="flex items-center gap-2 flex-wrap mb-1.5">
-                  <input value={t.fullName} onChange={(e) => setTravellerRow(i, { fullName: e.target.value })} placeholder="Full name" className="flex-1 min-w-[150px] px-2 py-1.5 border border-slate-300 rounded text-sm" />
-                  <input type="number" min="0" value={t.age} onChange={(e) => setTravellerRow(i, { age: e.target.value })} placeholder="Age" className="w-20 px-2 py-1.5 border border-slate-300 rounded text-sm" />
-                  <select value={t.sex} onChange={(e) => setTravellerRow(i, { sex: e.target.value })} className="w-28 px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"><option value="">Sex</option><option>Male</option><option>Female</option><option>Other</option></select>
-                  <button type="button" onClick={() => setTravellers(travellers.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-600 px-1">✕</button>
-                </div>
-              ))}
-              <button type="button" onClick={() => setTravellers([...travellers, { fullName: "", age: "", sex: "" }])} className="text-xs font-semibold text-blue-700 hover:text-blue-900">+ Add traveller</button>
-            </div>
+          </div>
+        ) : (
+          <TravelFields tf={tf} setTf={setTf} leadDays={leadDays} isShortNotice={isShortNotice} />
+        ))}
+
+        {isTravelType && linkTargets.length > 0 && (
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Link to related {linkCounterpart.toLowerCase()} <span className="font-normal text-slate-400">(same trip · optional)</span></label>
+            <select value={form.linkedTripId} onChange={(e) => setForm({ ...form, linkedTripId: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+              <option value="">Not linked</option>
+              {linkTargets.map(t => <option key={t.id} value={t.id}>{tripLabel(t)}</option>)}
+            </select>
           </div>
         )}
 
@@ -521,12 +639,20 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
               <input value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} placeholder="INV-2026-001" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
             </div>
           )}
+          {isTravelType && !isAccommodation && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Flight PNR <span className="font-normal text-slate-400">(if already booked)</span></label>
+              <input value={form.pnr} onChange={(e) => setForm({ ...form, pnr: e.target.value })} placeholder="e.g. ABC123" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            </div>
+          )}
         </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Description *</label>
-          <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What is this expense for?" rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-        </div>
+        {!isTravelType && (
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Description *</label>
+            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What is this expense for?" rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+          </div>
+        )}
 
         {!useSplit && <CurrencyInput value={form.amount} currency={form.currency} fxRate={form.fxRate} onChange={(v) => setForm({ ...form, amount: v.amount, currency: v.currency, fxRate: v.fxRate })} label="Amount" required />}
 
