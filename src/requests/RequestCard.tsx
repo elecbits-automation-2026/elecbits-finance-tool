@@ -1,4 +1,4 @@
-import { FileSignature, PiggyBank, Wallet, Paperclip, Eye, RotateCcw, ClipboardCheck } from "lucide-react";
+import { FileSignature, PiggyBank, Wallet, Paperclip, Eye, RotateCcw, ClipboardCheck, AlertTriangle } from "lucide-react";
 import { CURRENCIES } from "../constants";
 import { ActionButtons } from "./ActionButtons";
 import { CancelButton } from "./CancelButton";
@@ -29,7 +29,12 @@ export function RequestCard({ request: r, user, requests_all, budgets_all, pos_a
 
   const canCancel = showCancelResubmit && r.requesterId === user.id && !["Paid", "Rejected", "Cancelled", "Active", "Approved", "Closed"].includes(r.status) && r.currentStage !== "Processing";
   const canResubmit = showCancelResubmit && r.requesterId === user.id && r.status === "Rejected" && r.kind === "Payment";
-  const canFillPostTravel = showCancelResubmit && r.requesterId === user.id && r.travel && r.status === "Paid" && !r.postTravel;
+  const canFillPostTravel = showCancelResubmit && r.requesterId === user.id && r.travel?.subType === "Travel" && r.status === "Paid" && !r.postTravel;
+  // Approver-facing warning: this travel request's requester has earlier completed
+  // trips with no Travel Outcome Form filed. Computed live so it clears once they file.
+  const requesterPendingOutcomes = (showActions && r.travel?.subType === "Travel" && r.requesterId !== user.id)
+    ? (requests_all || []).filter(x => x.requesterId === r.requesterId && x.id !== r.id && x.travel?.subType === "Travel" && x.status === "Paid" && !x.postTravel)
+    : [];
 
   return (
     <div className={`bg-white rounded-xl border overflow-hidden ${isPI ? "border-teal-200" : isPO ? "border-fuchsia-200" : isBudget ? "border-indigo-200" : "border-slate-200"}`}>
@@ -79,12 +84,21 @@ export function RequestCard({ request: r, user, requests_all, budgets_all, pos_a
           </div>
         </div>
 
+        {showActions && requesterPendingOutcomes.length > 0 && (
+          <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-amber-900 mb-1"><AlertTriangle className="w-4 h-4" />Requester has pending Travel Outcome Form{requesterPendingOutcomes.length > 1 ? "s" : ""}</div>
+            <div className="text-amber-800">{r.requesterName} has {requesterPendingOutcomes.length} earlier completed trip{requesterPendingOutcomes.length > 1 ? "s" : ""} with no Travel Outcome Form filed. Please consider this while approving/rejecting this travel allowance.</div>
+            <ul className="list-disc ml-5 mt-1 text-amber-800 space-y-0.5">
+              {requesterPendingOutcomes.map(o => <li key={o.id}>{o.description} · {o.createdDate ? new Date(o.createdDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : ""} · <span className="font-mono">{o.id}</span></li>)}
+            </ul>
+          </div>
+        )}
         {showActions && <ActionButtons request={r} user={user} requests_all={requests_all} budgets_all={budgets_all} pos_all={pos_all} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} savePICounter={savePICounter} poCounter={poCounter} piCounter={piCounter} addNotifications={addNotifications} showToast={showToast} />}
         {canCancel && <CancelButton request={r} user={user} requests_all={requests_all} budgets_all={budgets_all} pos_all={pos_all} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} />}
         {canResubmit && <div className="mt-2"><button onClick={onResubmit} className="bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><RotateCcw className="w-3.5 h-3.5" />Resubmit with edits</button></div>}
         {canFillPostTravel && <div className="mt-2"><button onClick={onFillPostTravel} className="bg-teal-100 hover:bg-teal-200 border border-teal-300 text-teal-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><ClipboardCheck className="w-3.5 h-3.5" />Fill post-travel form</button></div>}
 
-        {expanded && <RequestDetails request={r} pos_all={pos_all} />}
+        {expanded && <RequestDetails request={r} pos_all={pos_all} requests_all={requests_all} />}
       </div>
     </div>
   );

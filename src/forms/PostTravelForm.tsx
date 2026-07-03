@@ -2,13 +2,27 @@ import { useState } from "react";
 import { ClipboardCheck } from "lucide-react";
 import { AttachmentInput } from "../components/AttachmentInput";
 
-// ============ POST-TRAVEL REPORT FORM ============
-// Filed by the traveller AFTER their travel request is fully approved & paid, to
-// justify the trip (replaces the old external Google Form). It writes a `postTravel`
-// object + one history entry onto the SAME request row. The server allows this narrow
-// write on a finalised row via the requests_guard branch added in migration 0025.
+// ============ TRAVEL OUTCOME (POST-TRAVEL) FORM ============
+// Filed by the traveller AFTER their travel request is approved & paid, to record the
+// outcomes of the trip. Writes a `postTravel` object + one history entry onto the SAME
+// request row (allowed on a finalised row by the requests_guard branch in migration
+// 0025). Mirrors the "Travel Outcome Form".
 export function PostTravelForm({ request: r, user, requests_all, saveRequests, onDone }) {
-  const [form, setForm] = useState({ actualDates: "", outcome: "", actualSpend: "", notes: "", attachment: null });
+  const t = r.travel || {};
+  const [form, setForm] = useState({
+    employeeName: user.name || "",
+    employeeEmail: user.email || "",
+    destinationCity: t.arrivalCity || t.toLocation || "",
+    flightPNR: t.pnr || "",
+    purpose: r.purpose || "",
+    meetingsCompleted: "",
+    keyOutcomes: "",
+    expectedOrderDate: "",
+    followUpActions: "",
+    objectiveAchieved: "",
+    remarks: "",
+    attachment: null, // Boarding Pass
+  });
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -23,21 +37,31 @@ export function PostTravelForm({ request: r, user, requests_all, saveRequests, o
 
   async function submit() {
     setErr("");
-    if (!form.outcome.trim()) return setErr("Outcome / purpose achieved is required");
-    if (!form.attachment) return setErr("Bills / receipts are mandatory");
-    if (form.actualSpend && Number(form.actualSpend) < 0) return setErr("Actual spend cannot be negative");
+    if (!form.employeeName.trim()) return setErr("Employee name is required");
+    if (!form.employeeEmail.trim()) return setErr("Employee email is required");
+    if (!form.attachment) return setErr("Boarding pass is required");
+    if (!form.keyOutcomes.trim()) return setErr("Key outcomes achieved is required");
+    if (!form.objectiveAchieved) return setErr("Please select whether the trip objective was achieved");
+    if (form.meetingsCompleted && Number(form.meetingsCompleted) < 0) return setErr("Meetings completed cannot be negative");
 
     setSubmitting(true);
     const now = new Date().toISOString();
     const postTravel = {
-      actualDates: form.actualDates.trim(),
-      outcome: form.outcome.trim(),
-      actualSpend: form.actualSpend === "" ? null : Number(form.actualSpend),
-      notes: form.notes.trim(),
-      receipt: form.attachment,
+      employeeName: form.employeeName.trim(),
+      employeeEmail: form.employeeEmail.trim(),
+      destinationCity: form.destinationCity.trim(),
+      boardingPass: form.attachment,
+      flightPNR: form.flightPNR.trim(),
+      purpose: form.purpose.trim(),
+      meetingsCompleted: form.meetingsCompleted === "" ? null : Number(form.meetingsCompleted),
+      keyOutcomes: form.keyOutcomes.trim(),
+      expectedOrderDate: form.expectedOrderDate,
+      followUpActions: form.followUpActions.trim(),
+      objectiveAchieved: form.objectiveAchieved,
+      remarks: form.remarks.trim(),
       filedBy: user.name, filedById: user.id, filedAt: now,
     };
-    const entry = { action: "Post-travel report filed", by: user.name, byId: user.id, at: now, comments: "" };
+    const entry = { action: "Travel outcome filed", by: user.name, byId: user.id, at: now, comments: `Objective ${form.objectiveAchieved}` };
     // Only postTravel + history change — nothing else — as required by requests_guard.
     const updated = requests_all.map(x => x.id === r.id ? { ...x, postTravel, history: [...(x.history || []), entry] } : x);
     await saveRequests(updated);
@@ -45,30 +69,48 @@ export function PostTravelForm({ request: r, user, requests_all, saveRequests, o
     onDone();
   }
 
-  const inputCls = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm";
-  const labelCls = "block text-xs font-semibold text-slate-700 mb-1.5";
-  const est = r.travel?.subType === "Accommodation" ? "stay" : "trip";
+  const input = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm";
+  const label = "block text-xs font-semibold text-slate-700 mb-1.5";
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 max-w-3xl">
       <div className="flex items-center gap-2 mb-1">
         <ClipboardCheck className="w-5 h-5 text-teal-600" />
-        <h2 className="text-xl font-bold text-slate-900">Post-travel report</h2>
+        <h2 className="text-xl font-bold text-slate-900">Travel Outcome Form</h2>
       </div>
-      <p className="text-sm text-slate-600 mb-1">{r.description} · <span className="font-mono text-xs">{r.id}</span></p>
-      <p className="text-xs text-slate-500 mb-5">Justify the {est} now that it's complete. Approved amount: ₹{(r.amountINR || 0).toLocaleString("en-IN")}.</p>
+      <p className="text-sm text-slate-600 mb-1">Use this form to record and share the outcomes of your travel. Please fill in all relevant details to help us track and improve future travel experiences.</p>
+      <p className="text-xs text-slate-500 mb-5">{r.description} · <span className="font-mono">{r.id}</span></p>
 
       <div className="space-y-4">
-        <div><label className={labelCls}>Actual dates travelled</label><input value={form.actualDates} onChange={(e) => setForm({ ...form, actualDates: e.target.value })} placeholder="e.g. 12–15 Jul 2026" className={inputCls} /></div>
-        <div><label className={labelCls}>Outcome / purpose achieved *</label><textarea value={form.outcome} onChange={(e) => setForm({ ...form, outcome: e.target.value })} rows={3} placeholder={`What was accomplished on this ${est}?`} className={inputCls} /></div>
-        <div><label className={labelCls}>Actual amount spent (₹)</label><input type="number" min="0" value={form.actualSpend} onChange={(e) => setForm({ ...form, actualSpend: e.target.value })} placeholder="Actual INR spent" className={inputCls} /></div>
-        <div><label className={labelCls}>Notes / learnings</label><textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="Anything worth noting for next time" className={inputCls} /></div>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div><label className={label}>Employee Name *</label><input value={form.employeeName} onChange={(e) => setForm({ ...form, employeeName: e.target.value })} className={input} /></div>
+          <div><label className={label}>Employee Email *</label><input type="email" value={form.employeeEmail} onChange={(e) => setForm({ ...form, employeeEmail: e.target.value })} className={input} /></div>
+        </div>
+        <div><label className={label}>Destination City</label><input value={form.destinationCity} onChange={(e) => setForm({ ...form, destinationCity: e.target.value })} className={input} /></div>
 
-        <AttachmentInput form={form} setForm={setForm} handleFileUpload={handleFileUpload} required label="Bills / receipts" />
+        <AttachmentInput form={form} setForm={setForm} handleFileUpload={handleFileUpload} required label="Boarding Pass" />
+
+        <div><label className={label}>Flight PNR number <span className="font-normal text-slate-400">(base location → destination)</span></label><input value={form.flightPNR} onChange={(e) => setForm({ ...form, flightPNR: e.target.value })} className={input} /></div>
+        <div><label className={label}>Purpose of Travel</label><input value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} className={input} /></div>
+        <div><label className={label}>Number of Meetings Completed</label><input type="number" min="0" value={form.meetingsCompleted} onChange={(e) => setForm({ ...form, meetingsCompleted: e.target.value })} className={input} /></div>
+        <div><label className={label}>Key outcomes achieved *</label><textarea value={form.keyOutcomes} onChange={(e) => setForm({ ...form, keyOutcomes: e.target.value })} rows={3} className={input} /></div>
+        <div><label className={label}>Expected date of order</label><input type="date" value={form.expectedOrderDate} onChange={(e) => setForm({ ...form, expectedOrderDate: e.target.value })} className={input} /></div>
+        <div><label className={label}>Follow-up actions required</label><textarea value={form.followUpActions} onChange={(e) => setForm({ ...form, followUpActions: e.target.value })} rows={2} className={input} /></div>
+
+        <div>
+          <label className={label}>Whether trip objective was achieved? *</label>
+          <div className="flex gap-4">
+            {["Yes", "No", "Partially"].map(o => (
+              <label key={o} className="flex items-center gap-1.5 text-sm text-slate-700"><input type="radio" name="objectiveAchieved" checked={form.objectiveAchieved === o} onChange={() => setForm({ ...form, objectiveAchieved: o })} className="w-4 h-4" />{o}</label>
+            ))}
+          </div>
+        </div>
+
+        <div><label className={label}>Additional remarks by employee</label><textarea value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} rows={2} className={input} /></div>
 
         {err && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">{err}</div>}
         <div className="flex gap-2">
-          <button onClick={submit} disabled={submitting} className="bg-teal-600 hover:bg-teal-700 disabled:bg-slate-400 text-white font-semibold px-5 py-2.5 rounded-lg text-sm">{submitting ? "Submitting…" : "Submit report"}</button>
+          <button onClick={submit} disabled={submitting} className="bg-teal-600 hover:bg-teal-700 disabled:bg-slate-400 text-white font-semibold px-5 py-2.5 rounded-lg text-sm">{submitting ? "Submitting…" : "Submit outcome"}</button>
         </div>
       </div>
     </div>

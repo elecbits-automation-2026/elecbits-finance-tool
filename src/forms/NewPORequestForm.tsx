@@ -191,6 +191,19 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
     if (form.isProject && !isEdit) {
       const budget = getActiveBudgetForProject(budgets, form.projectId);
       if (!budget) return setErr("Selected project has no active budget.");
+      // A new PO's commitment (plus already-approved POs on the project) may not exceed
+      // the project budget — mirrors the edit-PO ceiling so a PO can't be born over budget.
+      const otherProjectPOs = pos.filter(p => p.type === "POCreate" && p.projectId === form.projectId && (p.status === "Approved" || p.currentStage === "Approved" || p.status === "Closed"));
+      const otherPOAmount = otherProjectPOs.reduce((s, p) => s + p.amountINR, 0);
+      const totalAfter = otherPOAmount + grandTotalINR;
+      if (totalAfter > budget.amountINR) {
+        const overBy = totalAfter - budget.amountINR;
+        return setErr(`PO commitments would total ₹${(totalAfter / 100000).toFixed(2)}L, exceeding the project budget of ₹${(budget.amountINR / 100000).toFixed(2)}L by ₹${(overBy / 100000).toFixed(2)}L. Raise a Budget Extension first.`);
+      }
+      if (budget.projectType === "Client" && budget.clientOrderValue > 0) {
+        const ceiling = budget.clientOrderValue * MAX_BUDGET_RATIO;
+        if (totalAfter > ceiling) return setErr(`Breaches 20% margin. Max PO commitments: ₹${(ceiling / 100000).toFixed(2)}L (80% of client order ₹${(budget.clientOrderValue / 100000).toFixed(2)}L).`);
+      }
     }
     if (!form.isProject && !isEdit) {
       if (!monthlyBudget) return setErr(`No active Monthly Budget for ${user.dept} → ${form.category} for ${currentMonth}. Ask your Dept Head to raise one before raising this PO.`);

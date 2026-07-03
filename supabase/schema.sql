@@ -994,7 +994,7 @@ $$;
 create or replace function public.payment_stage_status(stage text)
 returns text language sql immutable as $$
   select case stage
-    when 'BoxBuildMid'  then 'Pending Delivery Head (Arun)'
+    when 'BoxBuildMid'  then 'Pending Delivery Head'
     when 'DeptApproval' then 'Pending Dept Approval'
     when 'VP'           then 'Pending VP'
     when 'CEO'          then 'Pending CEO'

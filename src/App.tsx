@@ -38,6 +38,19 @@ export default function App() {
   // on the async PASSWORD_RECOVERY event) reliably wins that race.
   const [recovery, setRecovery] = useState(isRecoveryUrl);
 
+  // A focused <input type="number"> increments/decrements on mouse-wheel, silently
+  // changing values as the user scrolls (type 10, scroll, it becomes 9). Blur any
+  // focused number input the instant a wheel scroll starts so it can't capture it —
+  // the page still scrolls, the value just stops changing.
+  useEffect(() => {
+    const onWheel = () => {
+      const el = document.activeElement;
+      if (el && el.tagName === "INPUT" && el.type === "number") el.blur();
+    };
+    document.addEventListener("wheel", onWheel, { passive: true });
+    return () => document.removeEventListener("wheel", onWheel);
+  }, []);
+
   // Restore an existing Supabase session on first load — but NOT when arriving
   // via a recovery link, or we'd route that temporary session into the app
   // instead of showing the set-new-password screen.
