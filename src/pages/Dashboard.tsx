@@ -16,6 +16,7 @@ import { BudgetView } from "./BudgetView";
 import { POListView } from "./POListView";
 import { PIListView } from "./PIListView";
 import { ReportsView } from "./ReportsView";
+import { HRExpensesView } from "./HRExpensesView";
 import { OrgOverview } from "./OrgOverview";
 import { RDAllocationView } from "./RDAllocationView";
 
@@ -152,6 +153,8 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, supplie
     tabs.push({ id: "pis", label: "All PIs", icon: FileText });
     if (user.role === "SuperManager") tabs.push({ id: "rd-allocations", label: "R&D Allocations", icon: Coins });
     if (canViewReports) tabs.push({ id: "reports", label: "Reports", icon: TrendingUp });
+    // HR-only: org-wide HR expense categories (people + office/admin ops).
+    if (effectiveDepts(user).includes("HR")) tabs.push({ id: "hr-expenses", label: "Org Expenses", icon: Users });
     if (canViewOrg) {
       tabs.push({ id: "overview", label: "Org Overview", icon: Building2 });
       tabs.push({ id: "all", label: "All Requests", icon: Users });
@@ -175,6 +178,7 @@ function UnifiedDashboard({ user, view, setView, requests, budgets, pos, supplie
       {view === "pos" && <POListView {...commonProps} />}
       {view === "pis" && <PIListView {...commonProps} />}
       {view === "reports" && <ReportsView {...commonProps} />}
+      {view === "hr-expenses" && <HRExpensesView {...commonProps} />}
       {view === "overview" && <OrgOverview {...commonProps} />}
       {view === "all" && <RequestList {...commonProps} requests={[...requests, ...budgets.filter(b => b.type !== "RDCap" && b.type !== "RDCapRequest"), ...pos].sort((a, b) => +new Date(b.createdDate || b.approvedDate) - +new Date(a.createdDate || a.approvedDate))} requests_all={requests} budgets_all={budgets} pos_all={pos} emptyMessage="No requests yet." />}
     </div>

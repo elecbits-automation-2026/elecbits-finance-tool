@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { FileSignature, Edit3, Eye, Paperclip, History, CheckCircle2, XCircle, Ban } from "lucide-react";
+import { FileSignature, Edit3, Eye, Paperclip, History, CheckCircle2, XCircle, Ban, Coins, Upload, X } from "lucide-react";
 import { CURRENCIES } from "../constants";
+import { getPIReceived, getPIOutstanding } from "../lib/finance";
 import { isReadOnly } from "../lib/access";
 import { AttachmentViewer } from "../components/AttachmentViewer";
 import { NewPIRequestForm } from "../forms/NewPIRequestForm";
+
+const RECEIPT_MODES = ["Bank Transfer", "NEFT", "RTGS", "UPI", "Cheque", "Cash", "Other"];
 
 // ============ PI LIST VIEW ============
 // Mirror of POListView, scoped to Proforma Invoice (PI) records. A PI's own number is
@@ -12,6 +15,7 @@ export function PIListView({ user, pos, requests, budgets, suppliers, savePOs, s
   const [tab, setTab] = useState("approved");
   const [editTarget, setEditTarget] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [receiptTarget, setReceiptTarget] = useState(null);
 
   if (editTarget) {
     return (
@@ -20,6 +24,18 @@ export function PIListView({ user, pos, requests, budgets, suppliers, savePOs, s
         <NewPIRequestForm user={user} budgets={budgets} pos={pos} requests={requests} savePOs={savePOs} editFor={editTarget} onSuccess={() => { setEditTarget(null); showToast("Edit request submitted", "success"); }} />
       </div>
     );
+  }
+
+  // Finance Head can manually close a PI (mirrors manuallyClosePO).
+  async function manuallyClosePI(pi) {
+    if (!confirm(`Close PI ${pi.piNumber}? No further receipts can be recorded against it after closing.`)) return;
+    const now = new Date().toISOString();
+    const updated = pos.map(p => p.id === pi.id ? {
+      ...p, status: "Closed", currentStage: "Closed", closedAt: now,
+      history: [...(p.history || []), { action: "Manually Closed", by: user.name, byId: user.id, at: now, comments: "Closed by Finance Head" }],
+    } : p);
+    await savePOs(updated);
+    showToast(`PI ${pi.piNumber} closed`, "info");
   }
 
   // Only PI records (POs are listed in their own view).
@@ -40,6 +56,7 @@ export function PIListView({ user, pos, requests, budgets, suppliers, savePOs, s
   return (
     <div>
       {cancelTarget && <PICancelModal pi={cancelTarget} user={user} pos={pos} savePOs={savePOs} onClose={() => setCancelTarget(null)} showToast={showToast} />}
+      {receiptTarget && <PIReceiptModal pi={receiptTarget} user={user} pos={pos} savePOs={savePOs} onClose={() => setReceiptTarget(null)} showToast={showToast} />}
       <div className="flex gap-1 mb-4 border-b border-slate-200 overflow-x-auto">
         <button onClick={() => setTab("approved")} className={`px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${tab === "approved" ? "border-teal-600 text-teal-700" : "border-transparent text-slate-600"}`}>Approved ({approved.length})</button>
         <button onClick={() => setTab("pending")} className={`px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${tab === "pending" ? "border-teal-600 text-teal-700" : "border-transparent text-slate-600"}`}>Pending ({pending.length})</button>
@@ -51,14 +68,14 @@ export function PIListView({ user, pos, requests, budgets, suppliers, savePOs, s
         <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-500">No PIs in this category.</div>
       ) : (
         <div className="space-y-2">
-          {list.map(pi => <PICard key={pi.id} pi={pi} pos={pos} user={user} onEdit={() => setEditTarget(pi)} onCancel={() => setCancelTarget(pi)} />)}
+          {list.map(pi => <PICard key={pi.id} pi={pi} pos={pos} user={user} onEdit={() => setEditTarget(pi)} onCancel={() => setCancelTarget(pi)} onRecordReceipt={() => setReceiptTarget(pi)} onClose={() => manuallyClosePI(pi)} />)}
         </div>
       )}
     </div>
   );
 }
 
-function PICard({ pi, pos, user, onEdit, onCancel }) {
+function PICard({ pi, pos, user, onEdit, onCancel, onRecordReceipt, onClose: onCloseManually }) {
   const [expanded, setExpanded] = useState(false);
   const [viewAttachment, setViewAttachment] = useState(null);
   const isApproved = pi.status === "Approved" || pi.currentStage === "Approved";
@@ -67,6 +84,11 @@ function PICard({ pi, pos, user, onEdit, onCancel }) {
   // Policy: once approved, a PI is view-only — no edits or cancellations.
   const canEdit = false;
   const canCancel = false;
+  // Receivables: money coming in against the PI.
+  const received = getPIReceived(pi);
+  const outstanding = getPIOutstanding(pi);
+  const canRecordReceipt = isApproved && !isCancelled && outstanding > 0 && (user.role === "Accountant" || user.role === "FinanceHead") && onRecordReceipt;
+  const canManualClose = isApproved && !isCancelled && user.role === "FinanceHead" && onCloseManually;
   const pendingEdits = pos.filter(p => p.type === "PIEdit" && p.editingPIId === pi.id && !["Approved", "Rejected", "Cancelled"].includes(p.status));
   const statusColor = isApproved ? "emerald" : isCancelled ? "slate" : isClosed ? "slate" : pi.status === "Rejected" ? "red" : "amber";
 
@@ -78,6 +100,7 @@ function PICard({ pi, pos, user, onEdit, onCancel }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <span className="text-xs px-1.5 py-0.5 rounded font-bold bg-teal-100 text-teal-700"><FileSignature className="w-3 h-3 inline mr-0.5" />PI</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700" title="Client invoice — the client pays us">RECEIVABLE</span>
               {pi.piNumber && <span className="font-mono text-xs font-bold text-teal-900">{pi.piNumber}</span>}
               {pi.version > 1 && <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100">v{pi.version}</span>}
               <span className={`text-xs px-2 py-0.5 rounded font-semibold bg-${statusColor}-100 text-${statusColor}-700`}>{pi.status}</span>
@@ -97,10 +120,20 @@ function PICard({ pi, pos, user, onEdit, onCancel }) {
           </div>
         </div>
 
-        {(canEdit || canCancel) && (
+        {isApproved && !isCancelled && (
+          <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+            <div className="bg-slate-50 rounded p-2"><div className="text-slate-500">Billed</div><div className="font-bold">₹{((pi.amountINR || 0) / 100000).toFixed(2)}L</div></div>
+            <div className="bg-emerald-50 rounded p-2"><div className="text-emerald-700">Received</div><div className="font-bold">₹{(received / 100000).toFixed(2)}L</div></div>
+            <div className="bg-amber-50 rounded p-2"><div className="text-amber-700">Outstanding</div><div className="font-bold">₹{(outstanding / 100000).toFixed(2)}L</div></div>
+          </div>
+        )}
+
+        {(canEdit || canCancel || canRecordReceipt || canManualClose) && (
           <div className="mt-3 flex gap-2 flex-wrap">
             {canEdit && <button onClick={onEdit} className="bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Edit3 className="w-3.5 h-3.5" />Request Edit</button>}
             {canCancel && <button onClick={onCancel} className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Ban className="w-3.5 h-3.5" />Request Cancel</button>}
+            {canRecordReceipt && <button onClick={onRecordReceipt} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Coins className="w-3.5 h-3.5" />Record Receipt</button>}
+            {canManualClose && <button onClick={onCloseManually} className="bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />Close PI</button>}
           </div>
         )}
 
@@ -122,7 +155,7 @@ function PICard({ pi, pos, user, onEdit, onCancel }) {
 
             {pi.hasPO && (
               <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-2">
-                <div className="font-bold text-fuchsia-900 mb-1">📄 Purchase Order{pi.poNumber ? ` · ${pi.poNumber}` : ""}</div>
+                <div className="font-bold text-fuchsia-900 mb-1">📄 Client PO{pi.poNumber ? ` · ${pi.poNumber}` : ""} <span className="font-normal text-fuchsia-600">(client's order to us)</span></div>
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5">
                   {(pi.totalGST || 0) > 0 ? (
                     <>
@@ -191,6 +224,24 @@ function PICard({ pi, pos, user, onEdit, onCancel }) {
               <div><span className="text-slate-500">Terms:</span> {pi.paymentTerms}</div>
             </div>
             {pi.attachment && <div><span className="text-slate-500">Quote:</span> <button onClick={() => setViewAttachment(pi.attachment)} className="text-teal-700 underline font-medium inline-flex items-center gap-1"><Paperclip className="w-3 h-3" />{pi.attachment.name}</button></div>}
+            {pi.receipts && pi.receipts.length > 0 && (
+              <div>
+                <div className="font-bold text-slate-700 mb-1 flex items-center gap-1"><Coins className="w-3 h-3" />Receipts ({pi.receipts.length}) · ₹{(received / 100000).toFixed(2)}L received of ₹{((pi.amountINR || 0) / 100000).toFixed(2)}L</div>
+                <div className="space-y-1">
+                  {pi.receipts.map((rc, i) => (
+                    <div key={rc.id || i} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 bg-emerald-50 rounded p-1.5">
+                      <span className="font-semibold">₹{((rc.amountINR || 0) / 100000).toFixed(2)}L</span>
+                      {rc.date && <span className="text-slate-500">{rc.date}</span>}
+                      {rc.mode && <span className="text-slate-500">{rc.mode}</span>}
+                      {rc.reference && <span className="font-mono text-slate-600">{rc.reference}</span>}
+                      {rc.note && <span className="text-slate-500 italic">"{rc.note}"</span>}
+                      {rc.proof && <button onClick={() => setViewAttachment(rc.proof)} className="text-teal-700 underline inline-flex items-center gap-1"><Paperclip className="w-3 h-3" />proof</button>}
+                      <span className="text-slate-400 ml-auto">by {rc.receivedBy}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {pi.editHistory && pi.editHistory.length > 0 && (
               <div>
                 <div className="font-bold text-slate-700 mb-1 flex items-center gap-1"><History className="w-3 h-3" />Edit History</div>
@@ -224,6 +275,78 @@ function PICard({ pi, pos, user, onEdit, onCancel }) {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function PIReceiptModal({ pi, user, pos, savePOs, onClose, showToast }) {
+  const outstanding = getPIOutstanding(pi);
+  const [form, setForm] = useState({ amount: String(Math.round(outstanding)), date: new Date().toISOString().slice(0, 10), reference: "", mode: "Bank Transfer", note: "", proof: null });
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { setErr("File too large. Max 2MB."); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => { setForm({ ...form, proof: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } }); setErr(""); };
+    reader.readAsDataURL(file);
+  }
+
+  async function submit() {
+    setErr("");
+    const amt = parseFloat(form.amount);
+    if (!amt || amt <= 0) return setErr("Enter a valid amount.");
+    if (amt > outstanding + 0.5) return setErr(`Amount exceeds the outstanding balance (₹${(outstanding / 100000).toFixed(2)}L).`);
+    setBusy(true);
+    const now = new Date().toISOString();
+    const receipt = { id: "RCPT-" + Date.now(), amountINR: amt, date: form.date, reference: form.reference.trim(), mode: form.mode, note: form.note.trim(), proof: form.proof, receivedBy: user.name, receivedById: user.id, receivedAt: now };
+    const fullyReceived = getPIReceived(pi) + amt >= (pi.amountINR || 0) - 0.5;
+    const entry = { action: fullyReceived ? "Fully Received (PI Closed)" : "Receipt Recorded", by: user.name, byId: user.id, at: now, comments: `₹${amt.toLocaleString("en-IN")} received${form.reference.trim() ? ` · ${form.reference.trim()}` : ""}` };
+    const updated = pos.map(p => p.id === pi.id ? {
+      ...p,
+      receipts: [...(p.receipts || []), receipt],
+      ...(fullyReceived ? { status: "Closed", currentStage: "Closed", closedAt: now } : {}),
+      history: [...(p.history || []), entry],
+    } : p);
+    await savePOs(updated);
+    setBusy(false);
+    showToast(fullyReceived ? `PI ${pi.piNumber} fully received — closed` : `Receipt recorded on PI ${pi.piNumber}`, "success");
+    onClose();
+  }
+
+  const input = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm";
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-1"><Coins className="w-5 h-5 text-emerald-600" /><div className="font-bold">Record Receipt · PI {pi.piNumber}</div></div>
+        <p className="text-sm text-slate-600 mb-3">Outstanding: <strong>₹{(outstanding / 100000).toFixed(2)}L</strong> of ₹{((pi.amountINR || 0) / 100000).toFixed(2)}L billed. Recording the full outstanding amount closes the PI.</p>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Amount received (₹) *</label><input type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={input} /></div>
+            <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Date</label><input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={input} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Reference / UTR</label><input value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} className={input} /></div>
+            <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Mode</label><select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })} className={input + " bg-white"}>{RECEIPT_MODES.map(m => <option key={m}>{m}</option>)}</select></div>
+          </div>
+          <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Note</label><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Optional" className={input} /></div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Proof (optional)</label>
+            {form.proof ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex items-center justify-between text-xs"><span className="inline-flex items-center gap-1 text-emerald-800"><Paperclip className="w-3 h-3" />{form.proof.name}</span><button onClick={() => setForm({ ...form, proof: null })} className="text-red-600"><X className="w-3.5 h-3.5" /></button></div>
+            ) : (
+              <label className="flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-emerald-400 text-xs text-slate-600"><Upload className="w-4 h-4" />Upload proof (max 2MB)<input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={handleFile} /></label>
+            )}
+          </div>
+          {err && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">{err}</div>}
+          <div className="flex gap-2">
+            <button onClick={submit} disabled={busy} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white text-sm font-semibold px-4 py-2 rounded-lg">Record Receipt</button>
+            <button onClick={onClose} className="bg-white border border-slate-200 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">Cancel</button>
+          </div>
+        </div>
       </div>
     </div>
   );

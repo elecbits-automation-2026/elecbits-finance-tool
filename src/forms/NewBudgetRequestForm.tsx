@@ -10,11 +10,19 @@ import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
 
 // ============ NEW BUDGET FORM ============
-export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, addNotifications, showToast, onSuccess }) {
-  const initialBudgetType = NON_PROJECT_DEPTS.includes(user.dept) ? "Monthly" : "Project";
+export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, addNotifications, showToast, onSuccess, reviseFrom = null }) {
+  const initialBudgetType = reviseFrom ? reviseFrom.type : (NON_PROJECT_DEPTS.includes(user.dept) ? "Monthly" : "Project");
   const [budgetType, setBudgetType] = useState(initialBudgetType);
-  const [projectType, setProjectType] = useState(null);
-  const [form, setForm] = useState({
+  const [projectType, setProjectType] = useState(reviseFrom ? (reviseFrom.projectType || null) : null);
+  const [form, setForm] = useState(reviseFrom ? {
+    projectId: reviseFrom.projectId || "", projectName: reviseFrom.projectName || "", client: reviseFrom.client || "",
+    startDate: reviseFrom.startDate || "", endDate: reviseFrom.endDate || "",
+    clientOrderValue: reviseFrom.clientOrderValue != null ? String(reviseFrom.clientOrderValue) : "", clientOrderCurrency: reviseFrom.clientOrderCurrency || "INR", clientOrderFxRate: reviseFrom.clientOrderFxRate != null ? String(reviseFrom.clientOrderFxRate) : "1",
+    amount: reviseFrom.amount != null ? String(reviseFrom.amount) : "", currency: reviseFrom.currency || "INR", fxRate: reviseFrom.fxRate != null ? String(reviseFrom.fxRate) : "1",
+    category: reviseFrom.category || "", month: reviseFrom.month || new Date().toISOString().slice(0, 7),
+    extensionFor: reviseFrom.extensionFor || "", reason: reviseFrom.reason || "", scope: reviseFrom.scope || "", attachment: null,
+    rdType: reviseFrom.rdType || "", justification: reviseFrom.justification || "", expectedOutcome: reviseFrom.expectedOutcome || "",
+  } : {
     projectId: "", projectName: "", client: "", startDate: "", endDate: "",
     clientOrderValue: "", clientOrderCurrency: "INR", clientOrderFxRate: "1",
     amount: "", currency: "INR", fxRate: "1",
@@ -134,6 +142,10 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
     } else if (budgetType === "Monthly") {
       if (!form.category) return setErr("Category required");
       if (!form.month) return setErr("Month required");
+      // One monthly pool per dept + category + month — a duplicate would be silently
+      // ignored (only the first is ever matched), orphaning the budget.
+      const dup = budgets.find(b => b.type === "Monthly" && b.dept === user.dept && b.category === form.category && b.month === form.month && !["Rejected", "Cancelled"].includes(b.status));
+      if (dup) return setErr(`A Monthly ${form.category} budget for ${user.dept} · ${form.month} already exists (${dup.status}). Edit or extend it instead of raising a duplicate.`);
     } else if (budgetType === "Extension") {
       if (!form.extensionFor) return setErr("Select project to extend");
       if (!form.reason.trim()) return setErr("Reason required");
@@ -195,7 +207,10 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
       extensionFor: form.extensionFor, reason: form.reason, scope: form.scope, attachment: form.attachment,
       rdType: form.rdType, justification: form.justification, expectedOutcome: form.expectedOutcome,
       selectedApprovers: selectedApproverIds, currentStage: initialStage, status: getStageLabel(initialStage, "Budget"),
-      history: [{ action: "Submitted", by: user.name, byId: user.id, at: now, comments: `${budgetType} budget request raised` }],
+      revisedFrom: reviseFrom?.id || null,
+      revisionNote: reviseFrom ? (reviseFrom.returnRemarks || "") : "",
+      revisionRound: reviseFrom ? (reviseFrom.revisionRound || 0) + 1 : 0,
+      history: [{ action: "Submitted", by: user.name, byId: user.id, at: now, comments: reviseFrom ? `${budgetType} budget re-sent after return for changes` : `${budgetType} budget request raised` }],
     };
     await saveBudgets([newBudget, ...budgets]);
     setSubmitting(false);

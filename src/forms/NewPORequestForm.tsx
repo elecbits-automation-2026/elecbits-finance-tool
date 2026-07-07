@@ -8,7 +8,7 @@ import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
 
 // ============ NEW PO REQUEST FORM ============
-export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [], savePOs, saveSuppliers, onSuccess, editFor = null }) {
+export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [], savePOs, saveSuppliers, onSuccess, editFor = null, reviseFrom = null }) {
   const isEdit = !!editFor;
   const [form, setForm] = useState<any>(isEdit ? {
     poNumber: "",
@@ -35,6 +35,18 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
     attachment: null,
     editReason: "",
     changeNote: "",
+    verified: false,
+  } : reviseFrom ? {
+    isProject: reviseFrom.isProject,
+    projectId: reviseFrom.projectId || "", category: reviseFrom.category || "",
+    supplierId: "",
+    supplierName: reviseFrom.supplierName || "", supplierAddress: reviseFrom.supplierAddress || "", supplierGST: reviseFrom.supplierGST || "",
+    isInternational: reviseFrom.isInternational || false, supplierCountry: reviseFrom.supplierCountry || "", supplierTaxId: reviseFrom.supplierTaxId || "",
+    hasPI: reviseFrom.hasPI || false, piNumber: reviseFrom.piNumber || "", piSubtotal: reviseFrom.piSubtotal != null ? String(reviseFrom.piSubtotal) : "", piGstPct: reviseFrom.piGstPct != null ? reviseFrom.piGstPct : 18,
+    lineItems: reviseFrom.lineItems && reviseFrom.lineItems.length ? JSON.parse(JSON.stringify(reviseFrom.lineItems)) : [{ id: "L1", description: "", qty: "", unit: "pcs", unitCost: "", gstPct: 18 }],
+    currency: reviseFrom.currency || "INR", fxRate: reviseFrom.fxRate || 1,
+    scope: reviseFrom.scope || "", deliveryTimeline: reviseFrom.deliveryTimeline || "", paymentTerms: reviseFrom.paymentTerms || "Net 30",
+    attachment: null,
     verified: false,
   } : {
     isProject: !NON_PROJECT_DEPTS.includes(user.dept),
@@ -173,7 +185,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
       if (form.isProject && form.projectId && grandTotalINR > editFor.amountINR) {
         const budget = getActiveBudgetForProject(budgets, form.projectId);
         if (budget) {
-          const otherProjectPOs = pos.filter(p => p.type === "POCreate" && p.projectId === form.projectId && p.id !== editFor.id && (p.status === "Approved" || p.currentStage === "Approved" || p.status === "Closed"));
+          const otherProjectPOs = pos.filter(p => p.type === "POCreate" && p.projectId === form.projectId && p.id !== editFor.id && !["Rejected", "Cancelled"].includes(p.status));
           const otherPOAmount = otherProjectPOs.reduce((s, p) => s + p.amountINR, 0);
           const totalAfter = otherPOAmount + grandTotalINR;
           if (totalAfter > budget.amountINR) {
@@ -193,12 +205,14 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
       if (!budget) return setErr("Selected project has no active budget.");
       // A new PO's commitment (plus already-approved POs on the project) may not exceed
       // the project budget — mirrors the edit-PO ceiling so a PO can't be born over budget.
-      const otherProjectPOs = pos.filter(p => p.type === "POCreate" && p.projectId === form.projectId && (p.status === "Approved" || p.currentStage === "Approved" || p.status === "Closed"));
+      // Count approved AND in-flight (pending) POs — otherwise several pending POs could
+      // each pass under budget but collectively blow past it once all are approved.
+      const otherProjectPOs = pos.filter(p => p.type === "POCreate" && p.projectId === form.projectId && !["Rejected", "Cancelled"].includes(p.status));
       const otherPOAmount = otherProjectPOs.reduce((s, p) => s + p.amountINR, 0);
       const totalAfter = otherPOAmount + grandTotalINR;
       if (totalAfter > budget.amountINR) {
         const overBy = totalAfter - budget.amountINR;
-        return setErr(`PO commitments would total ₹${(totalAfter / 100000).toFixed(2)}L, exceeding the project budget of ₹${(budget.amountINR / 100000).toFixed(2)}L by ₹${(overBy / 100000).toFixed(2)}L. Raise a Budget Extension first.`);
+        return setErr(`PO commitments (approved + in-flight) would total ₹${(totalAfter / 100000).toFixed(2)}L, exceeding the project budget of ₹${(budget.amountINR / 100000).toFixed(2)}L by ₹${(overBy / 100000).toFixed(2)}L. Raise a Budget Extension first.`);
       }
       if (budget.projectType === "Client" && budget.clientOrderValue > 0) {
         const ceiling = budget.clientOrderValue * MAX_BUDGET_RATIO;
@@ -279,7 +293,10 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
         ...baseData,
         currentStage: initialStage, status: getStageLabel(initialStage, "PO"),
         selectedApprovers: selectedApproverIds, version: 1, editHistory: [],
-        history: [{ action: "Submitted", by: user.name, byId: user.id, at: now, comments: "PO request raised" }],
+        revisedFrom: reviseFrom?.id || null,
+        revisionNote: reviseFrom ? (reviseFrom.returnRemarks || "") : "",
+        revisionRound: reviseFrom ? (reviseFrom.revisionRound || 0) + 1 : 0,
+        history: [{ action: "Submitted", by: user.name, byId: user.id, at: now, comments: reviseFrom ? "PO re-sent after return for changes" : "PO request raised" }],
       };
       await savePOs([newPO, ...pos]);
     }
@@ -476,7 +493,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
           <label className="flex items-start gap-2 cursor-pointer">
             <input type="checkbox" checked={form.hasPI} onChange={(e) => setForm({ ...form, hasPI: e.target.checked, verified: false })} className="w-4 h-4 mt-0.5" />
             <span>
-              <span className="text-xs font-bold text-teal-900"><FileText className="w-3.5 h-3.5 inline mr-1" />I have a Proforma Invoice (PI) for this PO</span>
+              <span className="text-xs font-bold text-teal-900"><FileText className="w-3.5 h-3.5 inline mr-1" />I have a Vendor Proforma Invoice for this PO <span className="font-normal text-teal-600">(payable — we pay the vendor)</span></span>
               <span className="block text-xs text-teal-700 mt-0.5">Tick this if you already have a PI from the supplier. You won't need to fill the line-items table — just enter the PI totals below and attach the PI document.</span>
             </span>
           </label>

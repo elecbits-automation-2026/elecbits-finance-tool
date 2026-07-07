@@ -1,10 +1,10 @@
-import { FileSignature, PiggyBank, Wallet, Paperclip, Eye, RotateCcw, ClipboardCheck, AlertTriangle } from "lucide-react";
+import { FileSignature, PiggyBank, Wallet, Paperclip, Eye, RotateCcw, ClipboardCheck, AlertTriangle, Undo2, Repeat } from "lucide-react";
 import { CURRENCIES } from "../constants";
 import { ActionButtons } from "./ActionButtons";
 import { CancelButton } from "./CancelButton";
 import { RequestDetails } from "./RequestDetails";
 
-export function RequestCard({ request: r, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter = undefined, savePICounter = undefined, poCounter = undefined, piCounter = undefined, expanded, setExpanded, showActions = false, showCancelResubmit = false, onResubmit = undefined, onFillPostTravel = undefined, addNotifications = undefined, showToast = undefined }) {
+export function RequestCard({ request: r, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter = undefined, savePICounter = undefined, poCounter = undefined, piCounter = undefined, expanded, setExpanded, showActions = false, showCancelResubmit = false, onResubmit = undefined, onRevise = undefined, onFillPostTravel = undefined, addNotifications = undefined, showToast = undefined }) {
   const isBudget = r.kind === "Budget";
   const isPO = r.kind === "PO";
   const isPI = r.kind === "PI";
@@ -25,10 +25,13 @@ export function RequestCard({ request: r, user, requests_all, budgets_all, pos_a
     "Processing Payment": "blue",
     "Paid": "emerald", "Active Budget": "emerald", "Active": "emerald", "Approved": "emerald",
     "Rejected": "red", "Cancelled": "slate", "Closed": "slate",
+    "Returned for Changes": "amber",
   }[r.status] || "slate";
 
-  const canCancel = showCancelResubmit && r.requesterId === user.id && !["Paid", "Rejected", "Cancelled", "Active", "Approved", "Closed"].includes(r.status) && r.currentStage !== "Processing";
+  const isReturned = r.status === "Returned for Changes";
+  const canCancel = showCancelResubmit && r.requesterId === user.id && !["Paid", "Rejected", "Cancelled", "Active", "Approved", "Closed", "Returned for Changes"].includes(r.status) && r.currentStage !== "Processing";
   const canResubmit = showCancelResubmit && r.requesterId === user.id && r.status === "Rejected" && r.kind === "Payment";
+  const canRevise = showCancelResubmit && r.requesterId === user.id && isReturned;
   const canFillPostTravel = showCancelResubmit && r.requesterId === user.id && r.travel?.subType === "Travel" && r.status === "Paid" && !r.postTravel;
   // Approver-facing warning: this travel request's requester has earlier completed
   // trips with no Travel Outcome Form filed. Computed live so it clears once they file.
@@ -45,6 +48,7 @@ export function RequestCard({ request: r, user, requests_all, budgets_all, pos_a
               <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${isPI ? "bg-teal-100 text-teal-700" : isPO ? "bg-fuchsia-100 text-fuchsia-700" : isBudget ? "bg-indigo-100 text-indigo-700" : "bg-blue-100 text-blue-700"}`}>
                 {isPOorPI ? <><FileSignature className="w-3 h-3 inline mr-0.5" />{docTag} {r.type === "POEdit" || r.type === "PIEdit" ? "Edit" : r.type === "POCancel" || r.type === "PICancel" ? "Cancel" : ""}</> : isBudget ? <><PiggyBank className="w-3 h-3 inline mr-0.5" />{r.type} Budget</> : <><Wallet className="w-3 h-3 inline mr-0.5" />Payment</>}
               </span>
+              {isPI && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700" title="Client invoice — the client pays us">RECEIVABLE</span>}
               {isPOorPI && ownNumber && <span className={`font-mono text-xs font-bold ${isPI ? "text-teal-900" : "text-fuchsia-900"}`}>{ownNumber}</span>}
               {isPOorPI && r.version > 1 && <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">v{r.version}</span>}
               <span className="font-mono text-xs text-slate-500">{r.id}</span>
@@ -54,7 +58,8 @@ export function RequestCard({ request: r, user, requests_all, budgets_all, pos_a
               {r.isProject && <span className="text-xs px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">Project</span>}
               {r.linkedPONumber && <span className="text-xs px-2 py-0.5 rounded bg-fuchsia-50 text-fuchsia-700 font-mono">{r.linkedPONumber}</span>}
               {r.currency && r.currency !== "INR" && <span className="text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold">{r.currency}</span>}
-              {r.resubmittedFrom && <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Resubmitted</span>}
+              {r.resubmittedFrom && !r.revisionRound && <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Resubmitted</span>}
+              {r.revisionRound > 0 && <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700 flex items-center gap-0.5"><Repeat className="w-3 h-3" />Re-requested · round {r.revisionRound}</span>}
               {r.attachment && <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 flex items-center gap-0.5"><Paperclip className="w-3 h-3" /></span>}
             </div>
             <div className="font-semibold text-slate-900 text-sm">
@@ -93,9 +98,25 @@ export function RequestCard({ request: r, user, requests_all, budgets_all, pos_a
             </ul>
           </div>
         )}
+        {(r.revisionNote || r.revisedFrom) && r.revisionRound > 0 && (
+          <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-amber-900 mb-1"><Repeat className="w-4 h-4" />Re-requested (round {r.revisionRound}) — changes were asked</div>
+            {r.revisionNote
+              ? <div className="text-amber-800">Returned earlier with: <span className="italic">"{r.revisionNote}"</span>. The requester has revised and re-sent; please review the updated request against these points.</div>
+              : <div className="text-amber-800">This request was returned to the requester earlier, revised, and re-sent. Please review the updated request.</div>}
+          </div>
+        )}
+        {isReturned && (
+          <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-amber-900 mb-1"><Undo2 className="w-4 h-4" />Returned for changes{r.returnedBy ? ` by ${r.returnedBy}` : ""}</div>
+            {r.returnRemarks && <div className="text-amber-800">Requested change: <span className="italic">"{r.returnRemarks}"</span></div>}
+            {r.requesterId === user.id && <div className="text-amber-700 mt-1">Use <strong>Revise &amp; resend</strong> below to fix and re-submit — it restarts the approval chain and every approver will see the note above.</div>}
+          </div>
+        )}
         {showActions && <ActionButtons request={r} user={user} requests_all={requests_all} budgets_all={budgets_all} pos_all={pos_all} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} savePOCounter={savePOCounter} savePICounter={savePICounter} poCounter={poCounter} piCounter={piCounter} addNotifications={addNotifications} showToast={showToast} />}
         {canCancel && <CancelButton request={r} user={user} requests_all={requests_all} budgets_all={budgets_all} pos_all={pos_all} saveRequests={saveRequests} saveBudgets={saveBudgets} savePOs={savePOs} />}
         {canResubmit && <div className="mt-2"><button onClick={onResubmit} className="bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><RotateCcw className="w-3.5 h-3.5" />Resubmit with edits</button></div>}
+        {canRevise && <div className="mt-2"><button onClick={onRevise} className="bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Undo2 className="w-3.5 h-3.5" />Revise &amp; resend</button></div>}
         {canFillPostTravel && <div className="mt-2"><button onClick={onFillPostTravel} className="bg-teal-100 hover:bg-teal-200 border border-teal-300 text-teal-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><ClipboardCheck className="w-3.5 h-3.5" />Fill post-travel form</button></div>}
 
         {expanded && <RequestDetails request={r} pos_all={pos_all} requests_all={requests_all} />}

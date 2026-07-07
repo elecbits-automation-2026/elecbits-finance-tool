@@ -152,7 +152,7 @@ function POCard({ po, requests, pos, user, onEdit, onCancel, onClose: onCloseMan
 
             {po.hasPI && (
               <div className="bg-teal-50 border border-teal-200 rounded-lg p-2">
-                <div className="font-bold text-teal-900 mb-1">🧾 Proforma Invoice{po.piNumber ? ` · ${po.piNumber}` : ""}</div>
+                <div className="font-bold text-teal-900 mb-1">🧾 Vendor Proforma{po.piNumber ? ` · ${po.piNumber}` : ""} <span className="font-normal text-teal-600">· PAYABLE (we pay the vendor)</span></div>
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5">
                   {(po.totalGST || 0) > 0 ? (
                     <>
