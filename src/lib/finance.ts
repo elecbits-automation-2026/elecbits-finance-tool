@@ -130,5 +130,16 @@ export function getPOAvailable(po, requests) {
   const usage = getPOUsage(requests, po.id);
   return Math.max(0, po.amountINR - usage.total);
 }
+// PI receivables — money coming IN against a Proforma Invoice. Unlike a PO (which is
+// consumed by separate linked payment requests), receipts are stored inline on the PI
+// record as pi.receipts[]. Billed = pi.amountINR; Received = sum of receipts.
+export function getPIReceived(pi) {
+  return (pi.receipts || []).reduce((s, r) => s + (r.amountINR || 0), 0);
+}
+export function getPIOutstanding(pi) {
+  if (pi.status === "Cancelled" || pi.currentStage === "Cancelled") return 0;
+  return Math.max(0, (pi.amountINR || 0) - getPIReceived(pi));
+}
+
 export function formatPONumber(num) { return `Az-PO-2526-${String(num).padStart(4, "0")}`; }
 export function formatPINumber(num) { return `Az-PI-2526-${String(num).padStart(4, "0")}`; }

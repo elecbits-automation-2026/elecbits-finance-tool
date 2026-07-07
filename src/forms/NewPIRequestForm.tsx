@@ -14,7 +14,7 @@ import { FlowPreview } from "../components/FlowPreview";
 // Accountant); the optional referenced PO lives in `hasPO`/`poNumber`/`poSubtotal`/`poGstPct`.
 // NOTE: the client is stored in the supplier* fields so the shared PO/PI pipeline keeps
 // working — only the UI is relabelled "Client". No supplier-master integration here.
-export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSuccess, editFor = null }) {
+export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSuccess, editFor = null, reviseFrom = null }) {
   const isEdit = !!editFor;
   const [form, setForm] = useState<any>(isEdit ? {
     piNumber: "",
@@ -40,6 +40,17 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
     attachment: null,
     editReason: "",
     changeNote: "",
+    verified: false,
+  } : reviseFrom ? {
+    isProject: reviseFrom.isProject != null ? reviseFrom.isProject : true,
+    projectId: reviseFrom.projectId || "", category: reviseFrom.category || "",
+    supplierName: reviseFrom.supplierName || "", supplierAddress: reviseFrom.supplierAddress || "", supplierGST: reviseFrom.supplierGST || "",
+    isInternational: reviseFrom.isInternational || false, supplierCountry: reviseFrom.supplierCountry || "", supplierTaxId: reviseFrom.supplierTaxId || "",
+    hasPO: reviseFrom.hasPO || false, poNumber: reviseFrom.poNumber || "", poSubtotal: reviseFrom.poSubtotal != null ? String(reviseFrom.poSubtotal) : "", poGstPct: reviseFrom.poGstPct != null ? reviseFrom.poGstPct : 18,
+    lineItems: reviseFrom.lineItems && reviseFrom.lineItems.length > 0 ? JSON.parse(JSON.stringify(reviseFrom.lineItems)) : [{ id: "L1", description: "", qty: "", unit: "pcs", unitCost: "", gstPct: 18 }],
+    currency: reviseFrom.currency || "INR", fxRate: reviseFrom.fxRate || 1,
+    scope: reviseFrom.scope || "", deliveryTimeline: reviseFrom.deliveryTimeline || "", paymentTerms: reviseFrom.paymentTerms || "Net 30",
+    attachment: null,
     verified: false,
   } : {
     isProject: true,
@@ -194,12 +205,15 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
     } else {
       const initialStage = needsMid ? "BoxBuildMid" : "DeptApproval";
       const newPI = {
-        id: "PI-REQ-" + Date.now(), kind: "PI", type: "PICreate",
+        id: "PI-REQ-" + Date.now(), kind: "PI", type: "PICreate", direction: "receivable",
         createdDate: now, requesterId: user.id, requesterName: user.name, dept: user.dept,
         ...baseData,
         currentStage: initialStage, status: getStageLabel(initialStage, "PI"),
         selectedApprovers: selectedApproverIds, version: 1, editHistory: [],
-        history: [{ action: "Submitted", by: user.name, byId: user.id, at: now, comments: "PI request raised" }],
+        revisedFrom: reviseFrom?.id || null,
+        revisionNote: reviseFrom ? (reviseFrom.returnRemarks || "") : "",
+        revisionRound: reviseFrom ? (reviseFrom.revisionRound || 0) + 1 : 0,
+        history: [{ action: "Submitted", by: user.name, byId: user.id, at: now, comments: reviseFrom ? "PI re-sent after return for changes" : "PI request raised" }],
       };
       await savePOs([newPI, ...pos]);
     }
@@ -230,11 +244,12 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
           </div>
         </div>
       )}
-      <div className="flex items-center gap-2 mb-1">
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
         <FileSignature className="w-5 h-5 text-teal-600" />
         <h2 className="text-xl font-bold text-slate-900">{isEdit ? "Edit PI Request" : "Raise PI Request"}</h2>
+        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">RECEIVABLE</span>
       </div>
-      <p className="text-sm text-slate-600 mb-5">{isEdit ? "Edit existing PI. PI amount auto-calculated from line items." : "PI is raised to a client for a project. Amount auto-calculated from line items."}</p>
+      <p className="text-sm text-slate-600 mb-5">This is a <strong>Client Invoice</strong> that <strong>we issue to a client</strong>.{isEdit ? "" : " (A vendor's proforma is recorded on its PO instead.)"}</p>
 
       <div className="space-y-4">
         {isEdit && (
@@ -329,7 +344,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
           <label className="flex items-start gap-2 cursor-pointer">
             <input type="checkbox" checked={form.hasPO} onChange={(e) => setForm({ ...form, hasPO: e.target.checked, verified: false })} className="w-4 h-4 mt-0.5" />
             <span>
-              <span className="text-xs font-bold text-fuchsia-900"><FileText className="w-3.5 h-3.5 inline mr-1" />I have a Purchase Order (PO) for this PI</span>
+              <span className="text-xs font-bold text-fuchsia-900"><FileText className="w-3.5 h-3.5 inline mr-1" />I have a Client PO for this PI</span>
               <span className="block text-xs text-fuchsia-700 mt-0.5">Tick this if you already have a PO from the client. You won't need to fill the line-items table — just enter the PO totals below and attach the PO document.</span>
             </span>
           </label>

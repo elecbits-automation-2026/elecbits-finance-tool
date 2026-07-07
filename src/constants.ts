@@ -57,6 +57,18 @@ export const ACCOMMODATION_DAILY_CAP_BY_ROLE = {
   CEO: 11000,
 };
 export const accommodationDailyCap = (role) => ACCOMMODATION_DAILY_CAP_BY_ROLE[role] ?? ACCOMMODATION_DAILY_CAP_DEFAULT;
+
+// Expense categories the HR channel sees org-wide (people + office/admin ops). Keep
+// in sync with the requests_select RLS carve-out (migration 0027 / caller_in_hr).
+export const HR_EXPENSE_NAMES = [
+  "Travel",
+  "Accommodation",
+  "Salary & Payroll",
+  "Employee Reimbursements",
+  "Office Supplies",
+  "Marketing Events",
+  "Utilities & Office Expenses",
+];
 // Minimum lead time (days) before travel start; a shorter lead requires an
 // urgency justification.
 export const TRAVEL_MIN_LEAD_DAYS = 4;

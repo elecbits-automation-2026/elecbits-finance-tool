@@ -32,3 +32,6 @@ docs/daily-work-sheet/
 *.xlsx
 *.xls
 *.csv
+
+# Org-facing user manual — kept local, not pushed
+docs/USER-MANUAL.html

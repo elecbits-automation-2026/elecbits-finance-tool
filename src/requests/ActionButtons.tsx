@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CheckCircle2, XCircle, AlertTriangle, Send, Upload, X, Undo2, CheckSquare, FileSignature, Paperclip } from "lucide-react";
 import { getStageLabel, computeNextStage, getDeptHeadsForDept } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
-import { formatPONumber, formatPINumber, getPOUsage } from "../lib/finance";
+import { formatPONumber, formatPINumber, getPOUsage, getActiveBudgetForProject, getProjectSpend, getPOAvailable } from "../lib/finance";
 
 // ============ ACTION BUTTONS ============
 export function ActionButtons({ request, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, savePICounter, poCounter, piCounter, addNotifications, showToast }) {
@@ -78,11 +78,45 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
     setPOAttachment(null);
   }
 
+  // Re-validate that a payment still fits its project budget / PO (counting every OTHER
+  // live request), so two payments raised against the same room can't both be approved
+  // into an overspend. Returns an error string, or null if it still fits.
+  function paymentNoLongerFits() {
+    if (isBudget || isPOorPI) return null;
+    const rest = requests_all.filter(r => r.id !== request.id);
+    const rows = Array.isArray(request.splits) && request.splits.length
+      ? request.splits
+      : (request.isProject && request.projectId ? [{ projectId: request.projectId, amountINR: request.amountINR, linkedPOId: request.linkedPOId }] : []);
+    for (const row of rows) {
+      if (!row.projectId) continue;
+      const budget = getActiveBudgetForProject(budgets_all, row.projectId);
+      if (budget) {
+        const avail = Math.max(0, budget.amountINR - getProjectSpend(rest, row.projectId).total);
+        if ((row.amountINR || 0) > avail + 0.5) return `Can no longer approve — project ${row.projectId} budget now has only ₹${(avail / 100000).toFixed(2)}L available (another payment used it). Reject this, or ask the requester to reduce it.`;
+      }
+      if (row.linkedPOId) {
+        const po = pos_all.find(p => p.id === row.linkedPOId);
+        if (po) {
+          const avail = getPOAvailable(po, rest);
+          if ((row.amountINR || 0) > avail + 0.5) return `Can no longer approve — PO ${po.poNumber} now has only ₹${(avail / 100000).toFixed(2)}L available. Reject this, or ask the requester to reduce it.`;
+        }
+      }
+    }
+    return null;
+  }
+
   async function doAction(actionType) {
-    if (actionType === "reject" && !comments.trim()) { alert("Reason mandatory"); return; }
+    if ((actionType === "reject" || actionType === "return") && !comments.trim()) { alert("Remarks mandatory"); return; }
     if (actionType === "pay" && !paymentForm.invoiceAttachment && !paymentForm.proofAttachment) { alert("Attach an invoice or payment-done document before marking this paid."); return; }
     // PO/PI create at the accountant step must carry the signed/stamped document.
     if (actionType === "approve" && isPOorPI && request.currentStage === "Accountant" && !isDocEdit && !isDocCancel && !poAttachment) { alert(`Attach the signed / stamped ${docLabel} document before assigning the number.`); return; }
+    // A hand-typed PO/PI number must be unique.
+    if (actionType === "approve" && isPOorPI && request.currentStage === "Accountant" && !isDocEdit && !isDocCancel && poNumberInput.trim()) {
+      const dupNum = pos_all.find(p => p.id !== request.id && (p.poNumber === poNumberInput.trim() || p.piNumber === poNumberInput.trim()));
+      if (dupNum) { alert(`Number "${poNumberInput.trim()}" is already used (${dupNum.poNumber || dupNum.piNumber}). Use a different number, or leave blank to auto-assign.`); return; }
+    }
+    // A payment must still fit its budget/PO at approval time (overspend guard).
+    if (actionType === "approve") { const fitErr = paymentNoLongerFits(); if (fitErr) { alert(fitErr); return; } }
     setBusy(true);
     const now = new Date().toISOString();
     let actionLabel = "";
@@ -209,6 +243,11 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
     } else if (actionType === "reject") {
       actionLabel = `Rejected at ${getStageLabel(request.currentStage, reqKind)}`;
       newStage = "Rejected"; newStatus = "Rejected";
+    } else if (actionType === "return") {
+      // Return to the requester for changes (not terminal — they revise & resend).
+      actionLabel = `Returned for changes by ${user.name}`;
+      newStage = "Returned"; newStatus = "Returned for Changes";
+      extraUpdates = { returnRemarks: comments.trim(), returnedBy: user.name, returnedById: user.id, returnedAt: now };
     } else if (actionType === "process") {
       actionLabel = "Started Processing"; newStage = "Processing"; newStatus = "Processing Payment";
     } else if (actionType === "pay") {
@@ -286,9 +325,16 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
       await addNotifications(notifs);
     }
 
+    // Notify the requester when their request is rejected or returned.
+    if ((actionType === "reject" || actionType === "return") && addNotifications) {
+      const isReturn = actionType === "return";
+      await addNotifications([{ id: "N-" + Date.now() + "-rr", toUserId: request.requesterId, title: isReturn ? "Returned for Changes" : `${reqKind} Rejected`, message: `Your ${reqKind} ${request.id} was ${isReturn ? "returned for changes" : "rejected"} at ${getStageLabel(request.currentStage, reqKind)} by ${user.name}${comments.trim() ? `: "${comments.trim()}"` : ""}`, at: now, read: false, requestId: request.id }]);
+    }
+
     if (actionType === "undopay" && showToast) showToast("Payment reversal logged.", "warning");
     if (actionType === "approve" && showToast) showToast("Approved", "success");
     if (actionType === "reject" && showToast) showToast("Rejected", "info");
+    if (actionType === "return" && showToast) showToast("Returned to requester", "info");
 
     setBusy(false); resetPOAssignForm();
     setPaymentForm({ utr: "", paymentMode: "Bank Transfer", paymentDate: new Date().toISOString().slice(0, 10), proofAttachment: null, invoiceAttachment: null, note: "" });
@@ -309,24 +355,28 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
           {isApprovalStage && (
             <>
               <button onClick={() => setMode("approve")} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />Approve</button>
+              <button onClick={() => setMode("return")} className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Undo2 className="w-3.5 h-3.5" />Return</button>
               <button onClick={() => setMode("reject")} className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><XCircle className="w-3.5 h-3.5" />Reject</button>
             </>
           )}
           {isPOAccountant && (
             <>
               <button onClick={() => setMode("po-assign")} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><FileSignature className="w-3.5 h-3.5" />{isDocEdit ? "Apply Edit" : isDocCancel ? "Apply Cancel" : `Assign ${docLabel} Number`}</button>
+              <button onClick={() => setMode("return")} className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Undo2 className="w-3.5 h-3.5" />Return</button>
               <button onClick={() => setMode("reject")} className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><XCircle className="w-3.5 h-3.5" />Reject</button>
             </>
           )}
           {isProcessStage && !isSuperManager && (
             <>
               <button onClick={() => setMode("process")} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Send className="w-3.5 h-3.5" />Start Processing</button>
+              <button onClick={() => setMode("return")} className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Undo2 className="w-3.5 h-3.5" />Return</button>
               <button onClick={() => setMode("reject")} className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><XCircle className="w-3.5 h-3.5" />Reject</button>
             </>
           )}
           {isPayStage && !isSuperManager && (
             <>
               <button onClick={() => setMode("pay")} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />Mark as Paid</button>
+              <button onClick={() => setMode("return")} className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Undo2 className="w-3.5 h-3.5" />Return</button>
               <button onClick={() => setMode("reject")} className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><XCircle className="w-3.5 h-3.5" />Reject</button>
             </>
           )}
@@ -334,6 +384,7 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
             <>
               {stage === "Accountant" && <button onClick={() => setMode("process")} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Send className="w-3.5 h-3.5" />Start Processing</button>}
               <button onClick={() => setMode("pay")} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />Mark Paid Directly</button>
+              <button onClick={() => setMode("return")} className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Undo2 className="w-3.5 h-3.5" />Return</button>
               <button onClick={() => setMode("reject")} className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"><XCircle className="w-3.5 h-3.5" />Reject</button>
             </>
           )}
@@ -466,15 +517,16 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
 
       {/* Approve / Reject / Process modes */}
       {mode && !["pay", "undopay", "po-assign"].includes(mode) && (
-        <div className={`space-y-2 p-3 rounded-lg border ${mode === "reject" ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-200"}`}>
-          <div className={`text-xs font-semibold flex items-center gap-1.5 ${mode === "reject" ? "text-red-900" : "text-slate-900"}`}>
+        <div className={`space-y-2 p-3 rounded-lg border ${mode === "reject" ? "bg-red-50 border-red-200" : mode === "return" ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-200"}`}>
+          <div className={`text-xs font-semibold flex items-center gap-1.5 ${mode === "reject" ? "text-red-900" : mode === "return" ? "text-amber-900" : "text-slate-900"}`}>
             {mode === "reject" && <><AlertTriangle className="w-3.5 h-3.5" />Reason mandatory</>}
+            {mode === "return" && <><Undo2 className="w-3.5 h-3.5" />Return to requester — say what to change (mandatory)</>}
             {mode === "approve" && "Add comment (recommended)"}
             {mode === "process" && "Add note (optional)"}
           </div>
-          <textarea value={comments} onChange={(e) => setComments(e.target.value)} placeholder={mode === "reject" ? "Why?" : "Optional"} rows={2} className="w-full text-xs px-2 py-1.5 border border-slate-200 rounded-lg" />
+          <textarea value={comments} onChange={(e) => setComments(e.target.value)} placeholder={mode === "reject" ? "Why?" : mode === "return" ? "What should the requester change before resubmitting?" : "Optional"} rows={2} className="w-full text-xs px-2 py-1.5 border border-slate-200 rounded-lg" />
           <div className="flex gap-2">
-            <button onClick={() => doAction(mode)} disabled={busy || (mode === "reject" && !comments.trim())} className={`text-white text-xs font-semibold px-3 py-1.5 rounded-lg disabled:bg-slate-400 ${mode === "reject" ? "bg-red-600" : "bg-emerald-600"}`}>Confirm {mode}</button>
+            <button onClick={() => doAction(mode)} disabled={busy || ((mode === "reject" || mode === "return") && !comments.trim())} className={`text-white text-xs font-semibold px-3 py-1.5 rounded-lg disabled:bg-slate-400 ${mode === "reject" ? "bg-red-600" : mode === "return" ? "bg-amber-600" : "bg-emerald-600"}`}>Confirm {mode}</button>
             <button onClick={() => { setMode(null); setComments(""); }} className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg">Cancel</button>
           </div>
         </div>

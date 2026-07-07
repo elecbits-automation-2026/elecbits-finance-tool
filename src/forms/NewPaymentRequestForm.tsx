@@ -169,6 +169,12 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     if (!isTravelType && !form.description.trim()) return setErr("Description required");
     if ((!useSplit && !form.amount) || amountINR <= 0) return setErr(useSplit ? "Add at least one project with an amount to the split" : "Valid amount required");
     if (form.currency !== "INR" && (!form.fxRate || parseFloat(form.fxRate) <= 0)) return setErr("Valid FX rate required");
+    // Guard against paying the same invoice twice.
+    if (form.invoiceNumber.trim()) {
+      const inv = form.invoiceNumber.trim().toLowerCase();
+      const dupInv = requests.find(r => r.kind === "Payment" && r.id !== resubmitFrom?.id && (r.invoiceNumber || "").trim().toLowerCase() === inv && !["Rejected", "Cancelled"].includes(r.status));
+      if (dupInv) return setErr(`Invoice "${form.invoiceNumber.trim()}" is already on payment ${dupInv.id} (${dupInv.status}). Check before raising a duplicate.`);
+    }
     if (isProject && !useSplit && !form.projectId) return setErr("Project ID required");
     if (!isProject && !isTravelType && !form.purpose.trim()) return setErr("Purpose mandatory");
     if (!form.attachment) return setErr("Attachment is mandatory");
@@ -327,6 +333,9 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
       selectedApprovers: selectedApproverIds,
       currentStage: initialStage, status: getStageLabel(initialStage),
       resubmittedFrom: resubmitFrom?.id || null,
+      revisedFrom: resubmitFrom?.id || null,
+      revisionNote: resubmitFrom ? (resubmitFrom.returnRemarks || (resubmitFrom.history || []).filter(h => (h.action || "").includes("Reject")).map(h => h.comments).pop() || "") : "",
+      revisionRound: resubmitFrom ? (resubmitFrom.revisionRound || 0) + 1 : 0,
       history: [
         ...(resubmitFrom ? [{ action: "Resubmitted", by: user.name, byId: user.id, at: now, comments: `From ${resubmitFrom.id}` }] : []),
         { action: "Submitted", by: user.name, byId: user.id, at: now, comments: "Payment request raised" + (linkedPOInfo ? ` against PO ${linkedPOInfo.poNumber}` : "") }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Edit3, History, XCircle, CheckCircle2, Ban, Paperclip } from "lucide-react";
+import { Edit3, History, XCircle, CheckCircle2, Ban, Paperclip, Undo2 } from "lucide-react";
 import { CURRENCIES } from "../constants";
 import { getRoster } from "../lib/roster";
 import { AttachmentViewer } from "../components/AttachmentViewer";
@@ -21,7 +21,7 @@ export function RequestDetails({ request: r, pos_all, requests_all = [] }) {
   // A PI mirrors a PO; the optional inner reference points at a PO (hasPO/poNumber)
   // rather than a PI (hasPI/piNumber).
   const refHas = isPI ? r.hasPO : r.hasPI;
-  const refLabel = isPI ? "Purchase Order" : "Proforma Invoice";
+  const refLabel = isPI ? "Client PO" : "Vendor Proforma";
   const refIcon = isPI ? "📄" : "🧾";
   const refNumber = isPI ? r.poNumber : r.piNumber;
   const refGstPct = isPI ? r.poGstPct : r.piGstPct;
@@ -31,6 +31,16 @@ export function RequestDetails({ request: r, pos_all, requests_all = [] }) {
   return (
     <div className="mt-3 pt-3 border-t border-slate-100 space-y-3">
       {viewAttachment && <AttachmentViewer attachment={viewAttachment} onClose={() => setViewAttachment(null)} />}
+      {(r.status === "Returned for Changes" || r.revisionRound > 0) && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs space-y-1">
+          {r.status === "Returned for Changes" && (
+            <div><span className="font-bold text-amber-900">Returned for changes{r.returnedBy ? ` by ${r.returnedBy}` : ""}:</span>{r.returnRemarks ? <span className="italic text-amber-800"> "{r.returnRemarks}"</span> : null}</div>
+          )}
+          {r.revisionRound > 0 && (
+            <div><span className="font-bold text-amber-900">Re-requested — round {r.revisionRound}.</span>{r.revisionNote ? <span className="italic text-amber-800"> Change asked: "{r.revisionNote}".</span> : null}{r.revisedFrom ? <span className="text-amber-700"> Supersedes <span className="font-mono">{r.revisedFrom}</span>.</span> : null}</div>
+          )}
+        </div>
+      )}
       <div>
         <div className="text-xs font-bold text-slate-700 mb-2">Details</div>
         <div className="grid sm:grid-cols-2 gap-2 text-xs">
@@ -90,6 +100,20 @@ export function RequestDetails({ request: r, pos_all, requests_all = [] }) {
               {r.editReason && <div className="sm:col-span-2"><span className="text-slate-500">Edit Reason:</span> {r.editReason}</div>}
               {r.changeNote && <div className="sm:col-span-2"><span className="text-slate-500">Change:</span> {r.changeNote}</div>}
               {r.reason && <div className="sm:col-span-2"><span className="text-slate-500">Cancellation Reason:</span> {r.reason}</div>}
+              {Array.isArray(r.receipts) && r.receipts.length > 0 && (
+                <div className="sm:col-span-2 bg-emerald-50 border border-emerald-200 rounded p-2">
+                  <div className="text-xs font-bold text-emerald-900 mb-1">💰 Receipts ({r.receipts.length}) — ₹{(r.receipts.reduce((s, x) => s + (x.amountINR || 0), 0) / 100000).toFixed(2)}L received of ₹{((r.amountINR || 0) / 100000).toFixed(2)}L billed</div>
+                  {r.receipts.map((rc, i) => (
+                    <div key={rc.id || i} className="flex flex-wrap gap-x-3 gap-y-0.5">
+                      <span className="font-semibold">₹{((rc.amountINR || 0) / 100000).toFixed(2)}L</span>
+                      {rc.date && <span className="text-slate-500">{rc.date}</span>}
+                      {rc.mode && <span className="text-slate-500">{rc.mode}</span>}
+                      {rc.reference && <span className="font-mono text-slate-600">{rc.reference}</span>}
+                      <span className="text-slate-400">by {rc.receivedBy}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
           {!isPOorPI && r.description && !isBudget && <div className="sm:col-span-2"><span className="text-slate-500">Description:</span> {r.description}</div>}
@@ -299,8 +323,8 @@ export function RequestDetails({ request: r, pos_all, requests_all = [] }) {
         <div className="space-y-1.5">
           {(r.history || []).map((h, i) => (
             <div key={i} className="flex items-start gap-2 text-xs">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${h.action.includes("Reject") ? "bg-red-100 text-red-600" : ["Paid", "Active", "Approved"].includes(h.action) ? "bg-emerald-100 text-emerald-600" : h.action === "Cancelled" ? "bg-slate-100 text-slate-600" : "bg-blue-100 text-blue-600"}`}>
-                {h.action.includes("Reject") ? <XCircle className="w-3 h-3" /> : h.action === "Cancelled" ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${h.action.includes("Reject") ? "bg-red-100 text-red-600" : h.action.includes("Return") ? "bg-amber-100 text-amber-700" : ["Paid", "Active", "Approved"].includes(h.action) ? "bg-emerald-100 text-emerald-600" : h.action === "Cancelled" ? "bg-slate-100 text-slate-600" : "bg-blue-100 text-blue-600"}`}>
+                {h.action.includes("Reject") ? <XCircle className="w-3 h-3" /> : h.action.includes("Return") ? <Undo2 className="w-3 h-3" /> : h.action === "Cancelled" ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
               </div>
               <div className="flex-1">
                 <div className="font-semibold text-slate-900">{h.action}</div>
