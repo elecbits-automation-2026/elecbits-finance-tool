@@ -17,9 +17,9 @@ export function RequestCard({ request: r, user, requests_all, budgets_all, pos_a
   const cancelLabel = isPI ? r.cancellingPINumber : r.cancellingPONumber;
 
   const statusColor = {
-    "Pending Delivery Head (Arun)": "cyan", "Pending Delivery Head": "cyan",
+    "Pending Delivery Head": "cyan",
     "Pending Dept Approval": "blue", "Pending Dept Head": "blue",
-    "Pending VP": "violet", "Pending CEO": "amber", "Pending Stuti + Sarthak": "fuchsia",
+    "Pending VP": "violet", "Pending CEO": "amber",
     "Pending Finance Head": "indigo",
     "Pending Accountant Processing": "teal", "Pending PO Number Assignment": "teal", "Pending PI Number Assignment": "teal",
     "Processing Payment": "blue",

@@ -5,6 +5,7 @@ import { getPIReceived, getPIOutstanding } from "../lib/finance";
 import { isReadOnly } from "../lib/access";
 import { AttachmentViewer } from "../components/AttachmentViewer";
 import { NewPIRequestForm } from "../forms/NewPIRequestForm";
+import { uploadAttachment } from "../lib/storage";
 
 const RECEIPT_MODES = ["Bank Transfer", "NEFT", "RTGS", "UPI", "Cheque", "Cash", "Other"];
 
@@ -286,13 +287,17 @@ function PIReceiptModal({ pi, user, pos, savePOs, onClose, showToast }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
-  function handleFile(e) {
+  async function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { setErr("File too large. Max 2MB."); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => { setForm({ ...form, proof: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } }); setErr(""); };
-    reader.readAsDataURL(file);
+    try {
+      const att = await uploadAttachment(file);
+      setForm(f => ({ ...f, proof: att }));
+      setErr("");
+    } catch (err) {
+      setErr("Upload failed: " + (err?.message || "please try again"));
+    }
   }
 
   async function submit() {

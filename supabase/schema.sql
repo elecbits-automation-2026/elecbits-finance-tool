@@ -465,6 +465,20 @@ end $$;
 
 -- ---------------------------------------------------------------- trigger
 
+-- Client order value for a project = sum of its APPROVED/CLOSED client PIs
+-- (PICreate rows in `pos`). Live source of truth for the 20% margin ceiling,
+-- replacing the old manually-entered clientOrderValue. Mirrors
+-- getProjectClientOrderValue() in src/lib/finance.ts. Defined before the guards
+-- that call it so check_function_bodies is satisfied on a top-to-bottom run.
+create or replace function public.project_client_order_value(project_id text)
+returns numeric language sql stable security definer set search_path = public as $$
+  -- A project's client-order value = sum of its APPROVED/CLOSED client PIs.
+  select coalesce(sum((data->>'amountINR')::numeric), 0)
+  from public.pos
+  where data->>'type' = 'PICreate' and data->>'projectId' = project_id
+    and (data->>'status' in ('Approved','Closed') or data->>'currentStage' = 'Approved');
+$$;
+
 create or replace function public.budgets_guard()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
@@ -493,6 +507,7 @@ declare
   used numeric;
   parent jsonb;
   ext_total numeric;
+  cov numeric;
 begin
   -- Service role / SQL editor / seed scripts: no JWT user — not subject to
   -- workflow rules (these paths are already privileged).
@@ -564,8 +579,13 @@ begin
       raise exception 'budgets: isProject flag does not match budget type';
     end if;
 
-    if new.type in ('Monthly','Extension') and p.role not in ('DeptApprover','BoxBuildMidApprover','FinanceHead') then
-      raise exception 'budgets: only Department Heads may raise % budgets', new.type;
+    if new.type = 'Monthly' and p.role not in ('DeptApprover','BoxBuildMidApprover','FinanceHead') then
+      raise exception 'budgets: only Department Heads may raise Monthly budgets';
+    end if;
+    -- Extensions may be raised by anyone who can raise project work (incl. employees);
+    -- the parent-project checks below still restrict WHICH project can be extended.
+    if new.type = 'Extension' and p.role not in ('Employee','DeptApprover','BoxBuildMidApprover','FinanceHead') then
+      raise exception 'budgets: role % may not raise Extensions', p.role;
     end if;
     if new.type = 'Project' then
       if req_dept in ('HR','Finance','Product','Marketing') then
@@ -597,11 +617,14 @@ begin
         -- projectId guard below still applies (the client auto-generates one).
         null;
       else
-        if coalesce((d->>'clientOrderValue')::numeric, 0) <= 0 then
-          raise exception 'budgets: client order value required';
+        -- Client project: order value is DERIVED from the project's approved PIs,
+        -- not the submitted field. Require >=1 approved PI and cap at 80%.
+        cov := public.project_client_order_value(d->>'projectId');
+        if cov <= 0 then
+          raise exception 'budgets: project % has no approved PI — client order value is taken from approved PIs', d->>'projectId';
         end if;
-        if amt > (d->>'clientOrderValue')::numeric * 0.80 then
-          raise exception 'budgets: exceeds 80%% of client order value';
+        if amt > cov * 0.80 then
+          raise exception 'budgets: exceeds 80%% of client order value (₹% from approved PIs)', cov;
         end if;
       end if;
       if exists (select 1 from public.budgets b
@@ -625,8 +648,14 @@ begin
         select coalesce(sum((b.data->>'amountINR')::numeric), 0) into ext_total from public.budgets b
           where b.data->>'type' = 'Extension' and b.data->>'extensionFor' = d->>'extensionFor'
             and (b.status = 'Active' or b.current_stage = 'Active');
-        if (parent->>'amountINR')::numeric + ext_total + amt > (parent->>'clientOrderValue')::numeric * 0.80 then
-          raise exception 'budgets: extension exceeds combined 80%% cap';
+        -- Live client-order value from approved PIs; fall back to the parent's
+        -- stored value for legacy projects that predate PI-driven COV.
+        cov := public.project_client_order_value(d->>'extensionFor');
+        if cov <= 0 then cov := coalesce((parent->>'clientOrderValue')::numeric, 0); end if;
+        -- Extensions may commit up to 100% of COV — dipping into the 20% margin is
+        -- allowed (it costs margin stars, enforced client-side). Hard stop at 100%.
+        if (parent->>'amountINR')::numeric + ext_total + amt > cov then
+          raise exception 'budgets: extension would exceed 100%% of client order value (₹% from approved PIs)', cov;
         end if;
       end if;
     end if;
@@ -1373,11 +1402,14 @@ begin
       raise exception 'po: PO commitments (₹%) would exceed the project budget (₹%). Raise a Budget Extension first.',
         total_after, budget_amt;
     end if;
-    if coalesce(b->>'projectType','') = 'Client' and coalesce((b->>'clientOrderValue')::numeric, 0) > 0 then
-      cov := (b->>'clientOrderValue')::numeric;
-      ceiling := cov * 0.80;
-      if total_after > ceiling + tol then
-        raise exception 'po: breaches 20%% margin — max PO commitments ₹% (80%% of client order ₹%)', ceiling, cov;
+    -- Live client-order value from approved PIs; legacy stored value as fallback.
+    cov := public.project_client_order_value(proj);
+    if cov <= 0 then cov := coalesce((b->>'clientOrderValue')::numeric, 0); end if;
+    -- Hard stop at 100% of COV — the 20% margin is a star cost (charged on the
+    -- budget/extension), not a wall; the project-budget cap above is the real limit.
+    if coalesce(b->>'projectType','') = 'Client' and cov > 0 then
+      if total_after > cov + tol then
+        raise exception 'po: PO commitments (₹%) would exceed 100%% of client order value (₹% from approved PIs)', total_after, cov;
       end if;
     end if;
     return new;

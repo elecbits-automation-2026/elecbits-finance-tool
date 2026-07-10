@@ -62,7 +62,7 @@ export function computeNextStage(request, currentStage, approver) {
       return "Active";
     }
     if (isPOorPI) {
-      if (request.amountINR >= VP_THRESHOLD) return "VP"; // VP first, then SuperManager for ≥5L
+      if (request.amountINR >= VP_THRESHOLD) return "VP"; // VP first, then CEO for ≥5L
       return "Accountant";
     }
     // Payments keep their existing straight-to-CEO routing (no VP) at ≥5L.
@@ -76,7 +76,7 @@ export function computeNextStage(request, currentStage, approver) {
       return "Active";
     }
     if (isPOorPI) {
-      if (request.amountINR >= CEO_THRESHOLD) return "SuperManagerApproval";
+      if (request.amountINR >= CEO_THRESHOLD) return "CEO"; // top-tier sign-off (SuperManagers remain the invisible any-stage backup)
       return "Accountant";
     }
     return "Accountant"; // Payment: VP is only reached in the 1L–5L tier
@@ -111,7 +111,8 @@ export function getStageLabel(stage, kind = "Payment") {
       "BoxBuildMid": "Pending Delivery Head",
       "DeptApproval": "Pending Dept Head",
       "VP": "Pending VP",
-      "SuperManagerApproval": "Pending Stuti + Sarthak",
+      "CEO": "Pending CEO",
+      "SuperManagerApproval": "Pending CEO",
       "FinanceHead": "Pending Finance Head",
       "Accountant": kind === "PI" ? "Pending PI Number Assignment" : "Pending PO Number Assignment",
       "Approved": "Approved",

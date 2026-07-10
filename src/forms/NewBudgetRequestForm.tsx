@@ -4,13 +4,14 @@ import { MONTHLY_BUDGET_CATEGORIES, NON_PROJECT_DEPTS, MAX_BUDGET_RATIO, VP_THRE
 import { isHODLevel, isReadOnly, effectiveDepts } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel, computeNextStage } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
-import { getRDAllocation } from "../lib/finance";
+import { getRDAllocation, getProjectClientOrderValue, getProjectStars, getApprovedProjects } from "../lib/finance";
 import { CurrencyInput } from "../components/CurrencyInput";
 import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
+import { uploadAttachment } from "../lib/storage";
 
 // ============ NEW BUDGET FORM ============
-export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, addNotifications, showToast, onSuccess, reviseFrom = null }) {
+export function NewBudgetRequestForm({ user, budgets, pos = [], requests, saveBudgets, addNotifications, showToast, onSuccess, reviseFrom = null }) {
   const initialBudgetType = reviseFrom ? reviseFrom.type : (NON_PROJECT_DEPTS.includes(user.dept) ? "Monthly" : "Project");
   const [budgetType, setBudgetType] = useState(initialBudgetType);
   const [projectType, setProjectType] = useState(reviseFrom ? (reviseFrom.projectType || null) : null);
@@ -22,6 +23,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
     category: reviseFrom.category || "", month: reviseFrom.month || new Date().toISOString().slice(0, 7),
     extensionFor: reviseFrom.extensionFor || "", reason: reviseFrom.reason || "", scope: reviseFrom.scope || "", attachment: null,
     rdType: reviseFrom.rdType || "", justification: reviseFrom.justification || "", expectedOutcome: reviseFrom.expectedOutcome || "",
+    marginJustification: reviseFrom.marginJustification || "",
   } : {
     projectId: "", projectName: "", client: "", startDate: "", endDate: "",
     clientOrderValue: "", clientOrderCurrency: "INR", clientOrderFxRate: "1",
@@ -29,13 +31,23 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
     category: "", month: new Date().toISOString().slice(0, 7),
     extensionFor: "", reason: "", scope: "", attachment: null,
     rdType: "", justification: "", expectedOutcome: "",
+    marginJustification: "",
   });
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const amountINR = form.currency === "INR" ? parseFloat(form.amount || "0") : parseFloat(form.amount || "0") * parseFloat(form.fxRate || "0");
-  const clientOrderINR = form.clientOrderCurrency === "INR" ? parseFloat(form.clientOrderValue || "0") : parseFloat(form.clientOrderValue || "0") * parseFloat(form.clientOrderFxRate || "0");
+  // Client order value is DERIVED live from the project's approved PIs — no longer
+  // typed. Grows automatically as more PIs are approved for the project.
+  const clientOrderINR = getProjectClientOrderValue(pos, form.projectId);
   const maxAllowedBudget = clientOrderINR * MAX_BUDGET_RATIO;
+  // Projects that already have >=1 approved PI — the only projects a Client budget
+  // can be raised against. Their client-order value = sum of approved PIs.
+  const piProjects = getApprovedProjects(pos);
+  function selectPiProject(v) {
+    const p = piProjects.find(x => x.projectId === v);
+    setForm({ ...form, projectId: v, projectName: p?.projectName || "", client: p?.client || "" });
+  }
 
   const currentMonth = new Date().toISOString().slice(0, 7);
   const rdThisMonth = budgets.filter(b => b.type === "Project" && b.projectType === "RD" && b.dept === user.dept && (b.status === "Active" || b.currentStage === "Active") && (b.approvedDate?.slice(0, 7) === currentMonth || b.createdDate?.slice(0, 7) === currentMonth));
@@ -76,7 +88,9 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
   // so include it here — otherwise the Finance head can't raise the Monthly/
   // Extension budgets the non-project-dept banner says Finance can.
   const canRaiseMonthly = isHODLevel(user) || user.role === "FinanceHead";
-  const canRaiseExtension = isHODLevel(user) || user.role === "FinanceHead";
+  // Extensions extend a project, so anyone who can raise a project (incl. employees
+  // in project departments) may extend one — not just department heads.
+  const canRaiseExtension = isHODLevel(user) || user.role === "FinanceHead" || canRaiseProject;
   const canRaiseRD = user.dept === "ODM" && (user.role === "Employee" || isHODLevel(user));
 
   // Monthly budgets are not project work; Project and Extension budgets are. This must
@@ -90,9 +104,13 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { setErr("File too large."); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => { setForm({ ...form, attachment: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } }); setErr(""); };
-    reader.readAsDataURL(file);
+    try {
+      const att = await uploadAttachment(file);
+      setForm(f => ({ ...f, attachment: att }));
+      setErr("");
+    } catch (err) {
+      setErr("Upload failed: " + (err?.message || "please try again"));
+    }
   }
 
   function resetProjectType() { setProjectType(null); setForm({ ...form, projectId: "", projectName: "", client: "", clientOrderValue: "", amount: "", rdType: "", justification: "", expectedOutcome: "", scope: "", reason: "" }); }
@@ -105,7 +123,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
     // departments the form OPENS with budgetType="Monthly", so a disabled button alone
     // does not stop an ordinary employee from submitting a Monthly budget.
     if (budgetType === "Monthly" && !canRaiseMonthly) return setErr("Only Department Heads can raise Monthly Budgets.");
-    if (budgetType === "Extension" && !canRaiseExtension) return setErr("Only Department Heads can raise Extensions.");
+    if (budgetType === "Extension" && !canRaiseExtension) return setErr("Extensions can only be raised by members of a project department.");
     if (budgetType === "Project" && !canRaiseProject) return setErr("Your department cannot raise Project budgets.");
     // Without a configured approver the request would be born stuck at DeptApproval
     // with nobody able to act on it (e.g. "Other" / Executive-employee departments).
@@ -127,9 +145,9 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
 
         if (projectType === "Client") {
           if (!form.client.trim()) return setErr("Client name required");
-          if (!form.clientOrderValue || clientOrderINR <= 0) return setErr("Client Order Value required");
+          if (clientOrderINR <= 0) return setErr("This project has no approved PI yet. Raise a Client PI for it and get it approved first — the client order value comes from its approved PIs.");
           if (!form.scope.trim()) return setErr("Scope required");
-          if (amountINR > maxAllowedBudget) return setErr(`Budget cannot exceed 80% of Client Order (max ₹${(maxAllowedBudget / 100000).toFixed(2)}L).`);
+          if (amountINR > maxAllowedBudget) return setErr(`Budget cannot exceed 80% of the client order value (from approved PIs: ₹${(clientOrderINR / 100000).toFixed(2)}L → max ₹${(maxAllowedBudget / 100000).toFixed(2)}L).`);
         } else if (projectType === "RD") {
           if (!canRaiseRD) return setErr("Only ODM can raise R&D budgets.");
           if (!form.rdType) return setErr("R&D Type required");
@@ -158,8 +176,17 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
       if (existing.projectType === "Client") {
         const exts = budgets.filter(b => b.type === "Extension" && b.extensionFor === form.extensionFor && (b.status === "Active" || b.currentStage === "Active"));
         const extTotal = exts.reduce((s, e) => s + e.amountINR, 0);
-        const max = existing.clientOrderValue * MAX_BUDGET_RATIO;
-        if (existing.amountINR + extTotal + amountINR > max) return setErr(`Extension exceeds 80% cap. Max: ₹${(max / 100000).toFixed(2)}L.`);
+        // Live client-order value from approved PIs; fall back to the legacy stored
+        // value for older projects that predate PI-driven COV.
+        const cov = getProjectClientOrderValue(pos, form.extensionFor) || existing.clientOrderValue || 0;
+        const committedAfter = existing.amountINR + extTotal + amountINR;
+        // HARD STOP at 100% of COV — you can never commit more than the client pays.
+        if (committedAfter > cov) return setErr(`Hard stop: total budget would reach ₹${(committedAfter / 100000).toFixed(2)}L, above the client order value of ₹${(cov / 100000).toFixed(2)}L. You cannot commit more than the client pays.`);
+        // Past 80% dips into the 20% margin — allowed WITH a justification (it costs
+        // margin stars). The first budget still can't cross 80% on its own.
+        if (committedAfter > cov * MAX_BUDGET_RATIO && !form.marginJustification.trim()) {
+          return setErr(`This extension dips into the 20% margin (past ₹${(cov * MAX_BUDGET_RATIO / 100000).toFixed(2)}L of ₹${(cov / 100000).toFixed(2)}L). Add a margin justification — it will cost margin stars.`);
+        }
       }
     }
 
@@ -206,6 +233,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
       category: form.category, month: form.month,
       extensionFor: form.extensionFor, reason: form.reason, scope: form.scope, attachment: form.attachment,
       rdType: form.rdType, justification: form.justification, expectedOutcome: form.expectedOutcome,
+      marginJustification: form.marginJustification || "",
       selectedApprovers: selectedApproverIds, currentStage: initialStage, status: getStageLabel(initialStage, "Budget"),
       revisedFrom: reviseFrom?.id || null,
       revisionNote: reviseFrom ? (reviseFrom.returnRemarks || "") : "",
@@ -245,7 +273,7 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
         </div>
       )}
       {!canRaiseMonthly && budgetType === "Monthly" && <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900 mb-4">Only Department Heads can raise Monthly Budgets.</div>}
-      {!canRaiseExtension && budgetType === "Extension" && <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900 mb-4">Only Department Heads can raise Extensions.</div>}
+      {!canRaiseExtension && budgetType === "Extension" && <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900 mb-4">Extensions can only be raised by members of a project department.</div>}
 
       {budgetType === "Project" && canRaiseProject && !projectType && (
         <div className="space-y-3">
@@ -289,26 +317,40 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
       <div className="space-y-4">
         {budgetType === "Project" && projectType === "Client" && (
           <>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Project ID *</label><input value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })} placeholder="EB-XX-XX-XXX-XX-XXXX" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono" /></div>
-              <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Project Name *</label><input value={form.projectName} onChange={(e) => setForm({ ...form, projectName: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-            </div>
-            <div className="grid md:grid-cols-3 gap-4">
-              <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Client *</label><input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-              <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Start</label><input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-              <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">End</label><input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <div className="flex items-center gap-1.5 mb-2"><Coins className="w-4 h-4 text-amber-700" /><span className="text-sm font-bold text-amber-900">Client Order Value (excl. GST)</span></div>
-              <CurrencyInput value={form.clientOrderValue} currency={form.clientOrderCurrency} fxRate={form.clientOrderFxRate} onChange={(v) => setForm({ ...form, clientOrderValue: v.amount, clientOrderCurrency: v.currency, clientOrderFxRate: v.fxRate })} label="Billed value (excl. GST)" required />
-              {clientOrderINR > 0 && <div className="mt-3 bg-white rounded p-2 text-xs"><div className="text-amber-900 font-semibold">📊 Max Budget: ₹{(maxAllowedBudget / 100000).toFixed(2)}L (80%)</div></div>}
-            </div>
-            <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Scope *</label><textarea value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
-            <CurrencyInput value={form.amount} currency={form.currency} fxRate={form.fxRate} onChange={(v) => setForm({ ...form, amount: v.amount, currency: v.currency, fxRate: v.fxRate })} label="Total Budget" required />
-            {amountINR > 0 && clientOrderINR > 0 && (
-              <div className={`rounded-lg p-3 text-sm ${amountINR > maxAllowedBudget ? "bg-red-50 border border-red-200 text-red-900" : "bg-emerald-50 border border-emerald-200 text-emerald-900"}`}>
-                {amountINR > maxAllowedBudget ? <><AlertTriangle className="w-4 h-4 inline mr-1" /><strong>BLOCKED:</strong> exceeds 80% cap.</> : <><CheckCircle2 className="w-4 h-4 inline mr-1" /><strong>OK:</strong> Margin {(((clientOrderINR - amountINR) / clientOrderINR) * 100).toFixed(1)}%</>}
-              </div>
+            {piProjects.length === 0 ? (
+              <div className="px-3 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900"><AlertTriangle className="w-4 h-4 inline mr-1" />No project has an approved PI yet. Raise and get a <strong>Client PI</strong> approved first — a Client budget draws its value from approved PIs.</div>
+            ) : (
+              <>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Project * <span className="text-slate-400 font-normal">(with approved PI)</span></label>
+                    <select value={form.projectId} onChange={(e) => selectPiProject(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                      <option value="">Select project</option>
+                      {piProjects.map(p => <option key={p.projectId} value={p.projectId}>{p.projectId} — {p.projectName}</option>)}
+                    </select>
+                  </div>
+                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Client</label><input value={form.client} readOnly className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-600" placeholder="From the PI" /></div>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Start</label><input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+                  <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">End</label><input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <div className="flex items-center gap-1.5 mb-1"><Coins className="w-4 h-4 text-amber-700" /><span className="text-sm font-bold text-amber-900">Client Order Value — from approved PIs</span></div>
+                  {form.projectId ? (
+                    <div className="text-xs text-amber-900">Total of approved PIs for <span className="font-mono">{form.projectId}</span>: <strong>₹{(clientOrderINR / 100000).toFixed(2)}L</strong>. {clientOrderINR > 0 ? <>Max budget (80%): <strong>₹{(maxAllowedBudget / 100000).toFixed(2)}L</strong>. Approve more PIs to raise this.</> : "No approved PI for this project yet."}</div>
+                  ) : (
+                    <div className="text-xs text-amber-800">Select a project — its client order value is the total of its approved PIs.</div>
+                  )}
+                </div>
+                <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Scope *</label><textarea value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+                <CurrencyInput value={form.amount} currency={form.currency} fxRate={form.fxRate} onChange={(v) => setForm({ ...form, amount: v.amount, currency: v.currency, fxRate: v.fxRate })} label="Total Budget" required />
+                {amountINR > 0 && clientOrderINR > 0 && (
+                  <div className={`rounded-lg p-3 text-sm ${amountINR > maxAllowedBudget ? "bg-red-50 border border-red-200 text-red-900" : "bg-emerald-50 border border-emerald-200 text-emerald-900"}`}>
+                    {amountINR > maxAllowedBudget ? <><AlertTriangle className="w-4 h-4 inline mr-1" /><strong>BLOCKED:</strong> exceeds 80% cap.</> : <><CheckCircle2 className="w-4 h-4 inline mr-1" /><strong>OK:</strong> Margin {(((clientOrderINR - amountINR) / clientOrderINR) * 100).toFixed(1)}%</>}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -384,6 +426,34 @@ export function NewBudgetRequestForm({ user, budgets, requests, saveBudgets, add
             </div>
             <CurrencyInput value={form.amount} currency={form.currency} fxRate={form.fxRate} onChange={(v) => setForm({ ...form, amount: v.amount, currency: v.currency, fxRate: v.fxRate })} label="Extension Amount" required />
             <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Reason *</label><textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" /></div>
+            {form.extensionFor && (() => {
+              const existing = budgets.find(b => b.projectId === form.extensionFor && b.type === "Project");
+              if (!existing || existing.projectType !== "Client") return null;
+              const cov = getProjectClientOrderValue(pos, form.extensionFor) || existing.clientOrderValue || 0;
+              if (cov <= 0) return null;
+              const exts = budgets.filter(b => b.type === "Extension" && b.extensionFor === form.extensionFor && (b.status === "Active" || b.currentStage === "Active"));
+              const extTotal = exts.reduce((s, e) => s + e.amountINR, 0);
+              const committedAfter = existing.amountINR + extTotal + amountINR;
+              const marginLine = cov * MAX_BUDGET_RATIO;
+              const eatsMargin = committedAfter > marginLine;
+              const overHard = committedAfter > cov;
+              const r = cov > 0 ? committedAfter / cov : 0;
+              let ps = r <= 0.60 ? 6 : r <= 0.80 ? 5 + (0.80 - r) / 0.20 : r < 1.00 ? 5 * (1 - (r - 0.80) / 0.20) : 0;
+              ps = Math.round(ps * 10) / 10;
+              return (
+                <>
+                  <div className={`rounded-lg p-3 border text-sm ${overHard ? "bg-red-50 border-red-200 text-red-900" : eatsMargin ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-emerald-50 border-emerald-200 text-emerald-900"}`}>
+                    <div className="text-xs">Project value: <strong>₹{(cov / 100000).toFixed(2)}L</strong> · 20% margin line: ₹{(marginLine / 100000).toFixed(2)}L · committed after this: <strong>₹{(committedAfter / 100000).toFixed(2)}L</strong></div>
+                    {overHard ? <div className="mt-1 font-semibold"><AlertTriangle className="w-4 h-4 inline mr-1" />Hard stop — this would exceed 100% of the client order value.</div>
+                      : eatsMargin ? <div className="mt-1"><strong>Dips into the 20% margin.</strong> If fully spent, this project would rate <strong>★ {ps.toFixed(1)}</strong> / 6. Justify below.</div>
+                      : <div className="mt-1"><CheckCircle2 className="w-4 h-4 inline mr-1" />Within the 20% margin — no star cost.</div>}
+                  </div>
+                  {eatsMargin && !overHard && (
+                    <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Margin justification * <span className="font-normal text-slate-500">(why this dips into the 20% margin)</span></label><textarea value={form.marginJustification} onChange={(e) => setForm({ ...form, marginJustification: e.target.value })} rows={2} className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm" /></div>
+                  )}
+                </>
+              );
+            })()}
           </>
         )}
 

@@ -141,5 +141,47 @@ export function getPIOutstanding(pi) {
   return Math.max(0, (pi.amountINR || 0) - getPIReceived(pi));
 }
 
+// A Client project's order value = sum of its APPROVED/CLOSED client PIs. Live
+// source of truth for the 20% margin ceiling (budget & PO). Grows automatically
+// as more PIs for the same project are approved.
+export function getProjectClientOrderValue(pos, projectId) {
+  return (pos || [])
+    .filter(p => p.type === "PICreate" && p.projectId === projectId &&
+      (p.status === "Approved" || p.currentStage === "Approved" || p.status === "Closed"))
+    .reduce((s, p) => s + (p.amountINR || 0), 0);
+}
+
+// Distinct projects that have >=1 approved PI (id + identity + client from the
+// latest PI), for attaching budgets to.
+export function getApprovedProjects(pos) {
+  const map = new Map();
+  (pos || [])
+    .filter(p => p.type === "PICreate" && p.projectId && (p.status === "Approved" || p.currentStage === "Approved" || p.status === "Closed"))
+    .sort((a, b) => +new Date(a.createdDate || 0) - +new Date(b.createdDate || 0))
+    .forEach(p => {
+      map.set(p.projectId, { projectId: p.projectId, projectName: p.projectName || p.projectId, client: p.supplierName || "", clientAddress: p.supplierAddress || "", clientState: p.supplierState || "", clientGSTIN: p.supplierGST || "" });
+    });
+  return [...map.values()];
+}
+
+// Margin Stars (0–6, one decimal): a live rating of how well a Client project
+// protects its 20% margin, from actual PAID vs the live client-order value.
+//   5.0★ = spent exactly 80% (kept the 20% target)
+//   up to 6.0★ = saved double the margin (≤60% spent / ≥40% margin)
+//   down to 0.0★ = ate the whole margin (100% spent)
+// Returns null for a project with no client-order value (nothing to rate yet).
+export function getProjectStars(pos, requests, projectId) {
+  const cov = getProjectClientOrderValue(pos, projectId);
+  if (cov <= 0) return null;
+  const paid = getProjectSpend(requests, projectId).paid;
+  const ratio = paid / cov;
+  let stars;
+  if (ratio <= 0.60) stars = 6;
+  else if (ratio <= 0.80) stars = 5 + (0.80 - ratio) / 0.20;       // saving bonus → 6
+  else if (ratio < 1.00) stars = 5 * (1 - (ratio - 0.80) / 0.20);  // margin penalty → 0
+  else stars = 0;
+  return Math.round(stars * 10) / 10;
+}
+
 export function formatPONumber(num) { return `Az-PO-2526-${String(num).padStart(4, "0")}`; }
 export function formatPINumber(num) { return `Az-PI-2526-${String(num).padStart(4, "0")}`; }

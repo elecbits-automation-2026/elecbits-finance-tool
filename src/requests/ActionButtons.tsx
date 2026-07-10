@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle, AlertTriangle, Send, Upload, X, Undo2, CheckSqua
 import { getStageLabel, computeNextStage, getDeptHeadsForDept } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
 import { formatPONumber, formatPINumber, getPOUsage, getActiveBudgetForProject, getProjectSpend, getPOAvailable } from "../lib/finance";
+import { uploadAttachment } from "../lib/storage";
 
 // ============ ACTION BUTTONS ============
 export function ActionButtons({ request, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, savePICounter, poCounter, piCounter, addNotifications, showToast }) {
@@ -46,29 +47,36 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { alert("Max 2MB."); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => { setPaymentForm({ ...paymentForm, proofAttachment: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } }); };
-    reader.readAsDataURL(file);
+    try {
+      const att = await uploadAttachment(file);
+      setPaymentForm(pf => ({ ...pf, proofAttachment: att }));
+    } catch (err) {
+      alert("Upload failed: " + (err?.message || "please try again"));
+    }
   }
 
   async function handlePaymentInvoiceUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { alert("Max 2MB."); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => { setPaymentForm({ ...paymentForm, invoiceAttachment: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } }); };
-    reader.readAsDataURL(file);
+    try {
+      const att = await uploadAttachment(file);
+      setPaymentForm(pf => ({ ...pf, invoiceAttachment: att }));
+    } catch (err) {
+      alert("Upload failed: " + (err?.message || "please try again"));
+    }
   }
 
   async function handlePOAttachmentUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { alert("Max 2MB."); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPOAttachment({ name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() });
-    };
-    reader.readAsDataURL(file);
+    try {
+      const att = await uploadAttachment(file);
+      setPOAttachment(att);
+    } catch (err) {
+      alert("Upload failed: " + (err?.message || "please try again"));
+    }
   }
 
   function resetPOAssignForm() {

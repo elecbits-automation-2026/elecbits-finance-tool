@@ -2,10 +2,12 @@ import { useState } from "react";
 import { Edit3, FileSignature, Briefcase, Target, AlertTriangle, Plus, X, CheckCircle2, FileText, PencilLine } from "lucide-react";
 import { CURRENCIES, EXPENSE_TYPES, NON_PROJECT_DEPTS, GSTIN_REGEX, GST_RATES, UNIT_OPTIONS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
 import { isReadOnly } from "../lib/access";
-import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
-import { computeLineItemTotals, getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage } from "../lib/finance";
+import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel, computeNextStage } from "../lib/workflow";
+import { getRoster } from "../lib/roster";
+import { computeLineItemTotals, getActiveBudgetForProject, getActiveMonthlyBudget, getMonthlyBudgetUsage, getProjectClientOrderValue } from "../lib/finance";
 import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
+import { uploadAttachment } from "../lib/storage";
 
 // ============ NEW PO REQUEST FORM ============
 export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [], savePOs, saveSuppliers, onSuccess, editFor = null, reviseFrom = null }) {
@@ -87,8 +89,12 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
   const monthlyBudget = (!form.isProject && form.category && !isEdit) ? getActiveMonthlyBudget(budgets, user.dept, form.category, currentMonth) : null;
   const monthlyUsage = monthlyBudget ? getMonthlyBudgetUsage(requests, user.dept, form.category, currentMonth) : null;
   const monthlyAvailable = monthlyBudget ? Math.max(0, monthlyBudget.amountINR - monthlyUsage.total) : 0;
-  const eligibleApprovers = getEligibleDeptApprovers(user, { requiresProject: form.isProject, category: form.isProject ? "Project" : "Non-Project" }, form.isProject);
+  // Drop the raiser from their own approver set (a dept head can't approve their own).
+  const eligibleApprovers = getEligibleDeptApprovers(user, { requiresProject: form.isProject, category: form.isProject ? "Project" : "Non-Project" }, form.isProject).filter(a => a.id !== user.id);
   const needsMid = needsBoxBuildMidApproval(user);
+  // Sole head raising their own PO: skip the dept stage and escalate to Finance Head
+  // (a Finance Head raiser -> VP).
+  const soleHead = !needsMid && eligibleApprovers.length === 0;
   const canRaiseProjectPO = !NON_PROJECT_DEPTS.includes(user.dept);
 
   // Pick a supplier from the master: autofill name/address/GSTIN.
@@ -132,9 +138,13 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { setErr("File too large."); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => { setForm({ ...form, attachment: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } }); setErr(""); };
-    reader.readAsDataURL(file);
+    try {
+      const att = await uploadAttachment(file);
+      setForm(f => ({ ...f, attachment: att }));
+      setErr("");
+    } catch (err) {
+      setErr("Upload failed: " + (err?.message || "please try again"));
+    }
   }
 
   async function submit() {
@@ -192,9 +202,11 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
             const overBy = totalAfter - budget.amountINR;
             return setErr(`Edit pushes total POs to ₹${(totalAfter / 100000).toFixed(2)}L, exceeding budget of ₹${(budget.amountINR / 100000).toFixed(2)}L by ₹${(overBy / 100000).toFixed(2)}L. Raise a Budget Extension first.`);
           }
-          if (budget.projectType === "Client" && budget.clientOrderValue > 0) {
-            const ceiling = budget.clientOrderValue * MAX_BUDGET_RATIO;
-            if (totalAfter > ceiling) return setErr(`Breaches 20% margin. Max PO commitments: ₹${(ceiling / 100000).toFixed(2)}L (80% of client order ₹${(budget.clientOrderValue / 100000).toFixed(2)}L).`);
+          const cov = getProjectClientOrderValue(pos, form.projectId) || budget.clientOrderValue || 0;
+          if (budget.projectType === "Client" && cov > 0 && totalAfter > cov) {
+            // Hard stop at 100% of COV — the 20% margin is now a star cost (charged on
+            // the budget), not a wall; the budget cap above is the real spend limit.
+            return setErr(`Hard stop: PO commitments (₹${(totalAfter / 100000).toFixed(2)}L) would exceed the client order value ₹${(cov / 100000).toFixed(2)}L (from approved PIs).`);
           }
         }
       }
@@ -214,9 +226,10 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
         const overBy = totalAfter - budget.amountINR;
         return setErr(`PO commitments (approved + in-flight) would total ₹${(totalAfter / 100000).toFixed(2)}L, exceeding the project budget of ₹${(budget.amountINR / 100000).toFixed(2)}L by ₹${(overBy / 100000).toFixed(2)}L. Raise a Budget Extension first.`);
       }
-      if (budget.projectType === "Client" && budget.clientOrderValue > 0) {
-        const ceiling = budget.clientOrderValue * MAX_BUDGET_RATIO;
-        if (totalAfter > ceiling) return setErr(`Breaches 20% margin. Max PO commitments: ₹${(ceiling / 100000).toFixed(2)}L (80% of client order ₹${(budget.clientOrderValue / 100000).toFixed(2)}L).`);
+      const cov = getProjectClientOrderValue(pos, form.projectId) || budget.clientOrderValue || 0;
+      if (budget.projectType === "Client" && cov > 0 && totalAfter > cov) {
+        // Hard stop at 100% of COV — the budget cap above is the real spend limit.
+        return setErr(`Hard stop: PO commitments (₹${(totalAfter / 100000).toFixed(2)}L) would exceed the client order value ₹${(cov / 100000).toFixed(2)}L (from approved PIs).`);
       }
     }
     if (!form.isProject && !isEdit) {
@@ -286,7 +299,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
       };
       await savePOs([editRequest, ...pos]);
     } else {
-      const initialStage = needsMid ? "BoxBuildMid" : "DeptApproval";
+      const initialStage = needsMid ? "BoxBuildMid" : (soleHead ? (user.role === "FinanceHead" ? "VP" : computeNextStage({ kind: "PO", amountINR: grandTotalINR }, "DeptApproval", null)) : "DeptApproval");
       const newPO = {
         id: "PO-REQ-" + Date.now(), kind: "PO", type: "POCreate",
         createdDate: now, requesterId: user.id, requesterName: user.name, dept: user.dept,
@@ -304,13 +317,23 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
     onSuccess();
   }
 
+  // Approval-chain preview: resolve approvers from the LIVE roster by role — no
+  // hardcoded personal names (role label is the fallback).
+  const roster = getRoster();
+  const deliveryHead = roster.find(u => u.role === "BoxBuildMidApprover")?.name || "Delivery Head";
+  // Seniority-aware preview: only show approvers ABOVE the raiser (a VP doesn't route
+  // through Finance Head / the VP stage / their own level).
+  const RANK = { Employee: 1, EmployeeReadOnly: 1, DeptApprover: 2, BoxBuildMidApprover: 2, FinanceHead: 3, VP: 4, CEO: 5, SuperManager: 5, Admin: 5 };
+  const rrank = RANK[user.role] || 1;
   const flowSteps = [user.name];
-  if (needsMid) flowSteps.push("Arun (Delivery Head)");
-  flowSteps.push(eligibleApprovers.map(a => a.name).filter(Boolean).join(" / ") || "Dept Head");
-  flowSteps.push("Finance Head");
+  if (needsMid) flowSteps.push(deliveryHead);
+  // A sole head skips the dept stage (they can't approve their own).
+  if (!soleHead) flowSteps.push(eligibleApprovers.map(a => a.name).filter(Boolean).join(" / ") || "Dept Head");
+  if (rrank < 3) flowSteps.push("Finance Head");
   if (!isEdit) {
-    if (grandTotalINR >= VP_THRESHOLD && grandTotalINR < CEO_THRESHOLD) flowSteps.push("VP");
-    if (grandTotalINR >= CEO_THRESHOLD) flowSteps.push("VP + Stuti & Sarthak");
+    if (rrank < 4 && grandTotalINR >= VP_THRESHOLD) flowSteps.push("VP");
+    // ≥5L PO/PI is signed off by the CEO (SuperManagers remain the invisible any-stage backup).
+    if (rrank < 4 && grandTotalINR >= CEO_THRESHOLD) flowSteps.push("CEO");
   }
   flowSteps.push("Accountant (assigns PO #)");
 
