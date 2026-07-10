@@ -9,6 +9,7 @@ import { CurrencyInput } from "../components/CurrencyInput";
 import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
 import { TravelFields } from "./TravelFields";
+import { uploadAttachment } from "../lib/storage";
 
 // ============ NEW PAYMENT REQUEST FORM ============
 export function NewPaymentRequestForm({ user, requests, budgets, pos, saveRequests, onSuccess, resubmitFrom = null }) {
@@ -153,12 +154,13 @@ export function NewPaymentRequestForm({ user, requests, budgets, pos, saveReques
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { setErr("File too large. Max 2MB."); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setForm({ ...form, attachment: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } });
+    try {
+      const att = await uploadAttachment(file);
+      setForm(f => ({ ...f, attachment: att }));
       setErr("");
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setErr("Upload failed: " + (err?.message || "please try again"));
+    }
   }
 
   async function submit() {

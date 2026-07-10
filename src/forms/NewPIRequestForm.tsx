@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Edit3, FileSignature, Briefcase, AlertTriangle, Plus, X, CheckCircle2, FileText } from "lucide-react";
-import { CURRENCIES, GSTIN_REGEX, GST_RATES, UNIT_OPTIONS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { CURRENCIES, GSTIN_REGEX, GST_RATES, UNIT_OPTIONS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD, INDIAN_STATES } from "../constants";
 import { isReadOnly } from "../lib/access";
-import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel } from "../lib/workflow";
-import { computeLineItemTotals, getActiveBudgetForProject } from "../lib/finance";
+import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel, computeNextStage } from "../lib/workflow";
+import { getRoster } from "../lib/roster";
+import { computeLineItemTotals } from "../lib/finance";
 import { AttachmentInput } from "../components/AttachmentInput";
 import { FlowPreview } from "../components/FlowPreview";
+import { uploadAttachment } from "../lib/storage";
 
 // ============ NEW PI REQUEST FORM ============
 // Raises a Proforma Invoice (PI). A PI is issued to a CLIENT (not a supplier) and is
@@ -20,10 +22,13 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
     piNumber: "",
     isProject: true,
     projectId: editFor.projectId || "",
+    projectName: editFor.projectName || "",
+    newProject: false,
     category: editFor.category || "",
     supplierName: editFor.supplierName,
     supplierAddress: editFor.supplierAddress,
     supplierGST: editFor.supplierGST || "",
+    supplierState: editFor.supplierState || "",
     isInternational: editFor.isInternational || false,
     supplierCountry: editFor.supplierCountry || "",
     supplierTaxId: editFor.supplierTaxId || "",
@@ -43,8 +48,8 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
     verified: false,
   } : reviseFrom ? {
     isProject: reviseFrom.isProject != null ? reviseFrom.isProject : true,
-    projectId: reviseFrom.projectId || "", category: reviseFrom.category || "",
-    supplierName: reviseFrom.supplierName || "", supplierAddress: reviseFrom.supplierAddress || "", supplierGST: reviseFrom.supplierGST || "",
+    projectId: reviseFrom.projectId || "", projectName: reviseFrom.projectName || "", newProject: false, category: reviseFrom.category || "",
+    supplierName: reviseFrom.supplierName || "", supplierAddress: reviseFrom.supplierAddress || "", supplierGST: reviseFrom.supplierGST || "", supplierState: reviseFrom.supplierState || "",
     isInternational: reviseFrom.isInternational || false, supplierCountry: reviseFrom.supplierCountry || "", supplierTaxId: reviseFrom.supplierTaxId || "",
     hasPO: reviseFrom.hasPO || false, poNumber: reviseFrom.poNumber || "", poSubtotal: reviseFrom.poSubtotal != null ? String(reviseFrom.poSubtotal) : "", poGstPct: reviseFrom.poGstPct != null ? reviseFrom.poGstPct : 18,
     lineItems: reviseFrom.lineItems && reviseFrom.lineItems.length > 0 ? JSON.parse(JSON.stringify(reviseFrom.lineItems)) : [{ id: "L1", description: "", qty: "", unit: "pcs", unitCost: "", gstPct: 18 }],
@@ -54,8 +59,8 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
     verified: false,
   } : {
     isProject: true,
-    projectId: "", category: "",
-    supplierName: "", supplierAddress: "", supplierGST: "",
+    projectId: "", projectName: "", newProject: false, category: "",
+    supplierName: "", supplierAddress: "", supplierGST: "", supplierState: "",
     isInternational: false, supplierCountry: "", supplierTaxId: "",
     hasPO: false, poNumber: "", poSubtotal: "", poGstPct: 18,
     lineItems: [{ id: "L1", description: "", qty: "", unit: "pcs", unitCost: "", gstPct: 18 }],
@@ -75,10 +80,46 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
   const totals = form.hasPO ? poTotals : lineTotals;
   const grandTotalINR = form.currency === "INR" ? totals.grandTotal : totals.grandTotal * parseFloat(form.fxRate || 0);
 
-  const activeBudgets = budgets.filter(b => b.type === "Project" && (b.status === "Active" || b.currentStage === "Active"));
+  // Raising a PI is the ENTRY POINT of a project: pick an existing project or
+  // define a brand-new one inline (＋ New project). A project's client-order value
+  // is the sum of its approved PIs; multiple PIs on the same project add up.
+  const existingProjects = (() => {
+    const map = new Map();
+    budgets.filter(b => b.type === "Project" && b.projectId).forEach(b => { if (!map.has(b.projectId)) map.set(b.projectId, { projectId: b.projectId, projectName: b.projectName || b.projectId }); });
+    (pos || []).filter(p => p.type === "PICreate" && p.projectId).forEach(p => { if (!map.has(p.projectId)) map.set(p.projectId, { projectId: p.projectId, projectName: p.projectName || p.projectId }); });
+    return [...map.values()];
+  })();
+  // Most recent PI per project — auto-fills the client details (a project has one client).
+  const lastPIByProject = (() => {
+    const map = new Map();
+    (pos || []).filter(p => p.type === "PICreate" && p.projectId).forEach(p => {
+      const prev = map.get(p.projectId);
+      if (!prev || new Date(p.createdDate) > new Date(prev.createdDate)) map.set(p.projectId, p);
+    });
+    return map;
+  })();
+  function selectProject(v) {
+    if (v === "__new__") { setForm({ ...form, newProject: true, projectId: "", projectName: "" }); return; }
+    const p = existingProjects.find(x => x.projectId === v);
+    const c = lastPIByProject.get(v);
+    setForm({
+      ...form, newProject: false, projectId: v, projectName: p?.projectName || "",
+      ...(c ? {
+        supplierName: c.supplierName || "", supplierAddress: c.supplierAddress || "", supplierGST: c.supplierGST || "",
+        supplierState: c.supplierState || "", isInternational: c.isInternational || false,
+        supplierCountry: c.supplierCountry || "", supplierTaxId: c.supplierTaxId || "",
+      } : {}),
+    });
+  }
+  const clientAutofilled = !form.newProject && !!form.projectId && lastPIByProject.has(form.projectId);
 
-  const eligibleApprovers = getEligibleDeptApprovers(user, { requiresProject: true, category: "Project" }, true);
+  // Drop the raiser from their own approver set (a dept head is their own dept's
+  // approver but can't approve their own request).
+  const eligibleApprovers = getEligibleDeptApprovers(user, { requiresProject: true, category: "Project" }, true).filter(a => a.id !== user.id);
   const needsMid = needsBoxBuildMidApproval(user);
+  // Sole head raising their own PI: skip the dept stage and escalate to the next
+  // authority (Finance Head; a Finance Head raiser -> VP).
+  const soleHead = !needsMid && eligibleApprovers.length === 0;
 
   function addLineItem() {
     const newId = "L" + (form.lineItems.length + 1) + "-" + Date.now().toString(36);
@@ -96,23 +137,35 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { setErr("File too large."); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => { setForm({ ...form, attachment: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } }); setErr(""); };
-    reader.readAsDataURL(file);
+    try {
+      const att = await uploadAttachment(file);
+      setForm(f => ({ ...f, attachment: att }));
+      setErr("");
+    } catch (err) {
+      setErr("Upload failed: " + (err?.message || "please try again"));
+    }
   }
 
   async function submit() {
     setErr("");
     if (isReadOnly(user)) return setErr("Your account is read-only and cannot raise requests.");
     if (!user.dept) return setErr("Your account has no department assigned. Ask an admin to set your department before raising requests.");
-    if (!isEdit && !form.projectId) return setErr("Select project");
+    if (!isEdit) {
+      if (!form.projectId.trim()) return setErr(form.newProject ? "Enter a project ID" : "Select project");
+      if (form.newProject && !form.projectName.trim()) return setErr("Enter a project name for the new project");
+    }
     if (!form.supplierName.trim()) return setErr("Client name required");
     if (!form.supplierAddress.trim()) return setErr("Client address required");
 
     // GSTIN validation
     if (!form.isInternational) {
+      if (!form.supplierState) return setErr("Select the client's state");
       if (!form.supplierGST.trim()) return setErr("GSTIN required for Indian clients (or check 'International client' if not applicable)");
       if (!GSTIN_REGEX.test(form.supplierGST.trim().toUpperCase())) return setErr("Invalid GSTIN format. Expected 15 chars like 09AABCA1234A1ZP");
+      if (form.supplierGST.trim().slice(0, 2) !== form.supplierState) {
+        const st = INDIAN_STATES.find(s => s.code === form.supplierState);
+        return setErr(`GSTIN must start with ${form.supplierState} (${st?.name}) — its first two digits are the state code. Check the state or the GSTIN.`);
+      }
     } else {
       if (!form.supplierCountry.trim()) return setErr("Country required for international client");
     }
@@ -144,29 +197,10 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
       if (form.piNumber !== editFor.piNumber) return setErr(`PI number must match: ${editFor.piNumber}`);
       if (!form.editReason.trim()) return setErr("Reason for edit required");
       if (!form.changeNote.trim()) return setErr("What's changing — required");
-
-      if (form.projectId && grandTotalINR > editFor.amountINR) {
-        const budget = getActiveBudgetForProject(budgets, form.projectId);
-        if (budget) {
-          const otherProjectPIs = pos.filter(p => p.type === "PICreate" && p.projectId === form.projectId && p.id !== editFor.id && (p.status === "Approved" || p.currentStage === "Approved" || p.status === "Closed"));
-          const otherPIAmount = otherProjectPIs.reduce((s, p) => s + p.amountINR, 0);
-          const totalAfter = otherPIAmount + grandTotalINR;
-          if (totalAfter > budget.amountINR) {
-            const overBy = totalAfter - budget.amountINR;
-            return setErr(`Edit pushes total PIs to ₹${(totalAfter / 100000).toFixed(2)}L, exceeding budget of ₹${(budget.amountINR / 100000).toFixed(2)}L by ₹${(overBy / 100000).toFixed(2)}L. Raise a Budget Extension first.`);
-          }
-          if (budget.projectType === "Client" && budget.clientOrderValue > 0) {
-            const ceiling = budget.clientOrderValue * MAX_BUDGET_RATIO;
-            if (totalAfter > ceiling) return setErr(`Breaches 20% margin. Max PI commitments: ₹${(ceiling / 100000).toFixed(2)}L (80% of client order ₹${(budget.clientOrderValue / 100000).toFixed(2)}L).`);
-          }
-        }
-      }
+      // A PI is no longer capped by the budget / client-order value — PIs now DEFINE
+      // the client-order value, so they are raised freely; the budget draws from them.
     }
 
-    if (!isEdit) {
-      const budget = getActiveBudgetForProject(budgets, form.projectId);
-      if (!budget) return setErr("Selected project has no active budget.");
-    }
     if (!form.attachment && !isEdit) return setErr(form.hasPO ? "Purchase Order (PO) document mandatory" : "Client quote / document mandatory");
 
     setSubmitting(true);
@@ -174,9 +208,10 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
     const selectedApproverIds = eligibleApprovers.map(a => a.id);
 
     const baseData = {
-      isProject: true, projectId: form.projectId, category: "",
+      isProject: true, projectId: form.projectId, projectName: form.projectName || "", category: "",
       supplierName: form.supplierName, supplierAddress: form.supplierAddress,
       supplierGST: form.supplierGST.trim().toUpperCase(),
+      supplierState: form.isInternational ? "" : form.supplierState,
       isInternational: form.isInternational, supplierCountry: form.supplierCountry, supplierTaxId: form.supplierTaxId,
       hasPO: !!form.hasPO,
       poNumber: form.hasPO ? form.poNumber.trim() : "",
@@ -203,7 +238,7 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
       };
       await savePOs([editRequest, ...pos]);
     } else {
-      const initialStage = needsMid ? "BoxBuildMid" : "DeptApproval";
+      const initialStage = needsMid ? "BoxBuildMid" : (soleHead ? (user.role === "FinanceHead" ? "VP" : computeNextStage({ kind: "PI", amountINR: grandTotalINR }, "DeptApproval", null)) : "DeptApproval");
       const newPI = {
         id: "PI-REQ-" + Date.now(), kind: "PI", type: "PICreate", direction: "receivable",
         createdDate: now, requesterId: user.id, requesterName: user.name, dept: user.dept,
@@ -221,13 +256,24 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
     onSuccess();
   }
 
+  // Approval-chain preview: resolve every approver from the LIVE roster by role —
+  // no hardcoded personal names (they change with staff; a role label is the fallback).
+  const roster = getRoster();
+  const deliveryHead = roster.find(u => u.role === "BoxBuildMidApprover")?.name || "Delivery Head";
+  // Seniority-aware preview: only show approvers ABOVE the raiser. A VP raising
+  // doesn't route through Finance Head / the VP stage / their own level — those are
+  // skipped, so a VP sees just CEO → Accountant.
+  const RANK = { Employee: 1, EmployeeReadOnly: 1, DeptApprover: 2, BoxBuildMidApprover: 2, FinanceHead: 3, VP: 4, CEO: 5, SuperManager: 5, Admin: 5 };
+  const rrank = RANK[user.role] || 1;
   const flowSteps = [user.name];
-  if (needsMid) flowSteps.push("Arun (Delivery Head)");
-  flowSteps.push(eligibleApprovers.map(a => a.name).filter(Boolean).join(" / ") || "Dept Head");
-  flowSteps.push("Finance Head");
+  if (needsMid) flowSteps.push(deliveryHead);
+  // A sole head skips the dept stage (they can't approve their own).
+  if (!soleHead) flowSteps.push(eligibleApprovers.map(a => a.name).filter(Boolean).join(" / ") || "Dept Head");
+  if (rrank < 3) flowSteps.push("Finance Head");
   if (!isEdit) {
-    if (grandTotalINR >= VP_THRESHOLD && grandTotalINR < CEO_THRESHOLD) flowSteps.push("VP");
-    if (grandTotalINR >= CEO_THRESHOLD) flowSteps.push("VP + Stuti & Sarthak");
+    if (rrank < 4 && grandTotalINR >= VP_THRESHOLD) flowSteps.push("VP");
+    // ≥5L PO/PI is signed off by the CEO (SuperManagers remain the invisible any-stage backup).
+    if (rrank < 4 && grandTotalINR >= CEO_THRESHOLD) flowSteps.push("CEO");
   }
   flowSteps.push("Accountant (assigns PI #)");
 
@@ -262,21 +308,25 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
         {!isEdit && (
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">Project *</label>
-            {activeBudgets.length === 0 ? (
-              <div className="px-3 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900"><AlertTriangle className="w-4 h-4 inline mr-1" />No active project budgets.</div>
-            ) : (
-              <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
-                <option value="">Select project</option>
-                {activeBudgets.map(b => <option key={b.projectId} value={b.projectId}>[{b.projectType === "RD" ? "R&D" : b.projectType === "OneTime" ? "One-Time" : "Client"}] {b.projectId} — {b.projectName}</option>)}
-              </select>
+            <select value={form.newProject ? "__new__" : form.projectId} onChange={(e) => selectProject(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+              <option value="">Select project</option>
+              {existingProjects.map(p => <option key={p.projectId} value={p.projectId}>{p.projectId} — {p.projectName}</option>)}
+              <option value="__new__">＋ New project…</option>
+            </select>
+            {form.newProject && (
+              <div className="grid sm:grid-cols-2 gap-2 mt-2">
+                <input value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })} placeholder="Project ID (e.g. EB-123)" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono" />
+                <input value={form.projectName} onChange={(e) => setForm({ ...form, projectName: e.target.value })} placeholder="Project name" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
             )}
+            <p className="text-[11px] text-slate-500 mt-1">A project's client-order value is the total of its approved PIs. Raise the first PI for a new project here — its budget then draws 80% of it.</p>
           </div>
         )}
 
         {/* Client Details */}
         <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-            <div className="text-xs font-bold text-teal-900"><Briefcase className="w-3.5 h-3.5 inline mr-1" />Client Details</div>
+            <div className="text-xs font-bold text-teal-900"><Briefcase className="w-3.5 h-3.5 inline mr-1" />Client Details{clientAutofilled && <span className="ml-2 font-normal text-emerald-700">✓ auto-filled from registered client · editable</span>}</div>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-teal-900 cursor-pointer">
               <input type="checkbox" checked={form.isInternational} onChange={(e) => setForm({ ...form, isInternational: e.target.checked })} className="w-3.5 h-3.5" />
               International client (no GSTIN)
@@ -302,17 +352,45 @@ export function NewPIRequestForm({ user, budgets, pos, requests, savePOs, onSucc
               />
             </div>
             {!form.isInternational ? (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">GSTIN * <span className="font-normal text-slate-500">(15 chars, e.g. 09AABCA1234A1ZP)</span></label>
-                <input
-                  value={form.supplierGST}
-                  onChange={(e) => setForm({ ...form, supplierGST: e.target.value.toUpperCase() })}
-                  placeholder="09AABCA1234A1ZP"
-                  className={`w-full px-3 py-1.5 border rounded-lg text-sm font-mono ${form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) ? "border-red-300 bg-red-50" : "border-slate-300"}`}
-                  maxLength={15}
-                />
-                {form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) && <p className="text-xs text-red-600 mt-1">Invalid GSTIN format</p>}
-                {form.supplierGST && GSTIN_REGEX.test(form.supplierGST.trim()) && <p className="text-xs text-emerald-600 mt-1"><CheckCircle2 className="w-3 h-3 inline" /> Valid GSTIN</p>}
+              <div className="grid md:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">State *</label>
+                  <select
+                    value={form.supplierState}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      // Auto-fill the GSTIN's first two digits (the state code) for the user;
+                      // preserve whatever they've already typed after the state code.
+                      setForm({ ...form, supplierState: code, supplierGST: code ? code + form.supplierGST.slice(2) : form.supplierGST });
+                    }}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
+                  >
+                    <option value="">Select state</option>
+                    {[...INDIAN_STATES].sort((a, b) => a.name.localeCompare(b.name)).map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">GSTIN * <span className="font-normal text-slate-500">(15 chars, e.g. 09AABCA1234A1ZP)</span></label>
+                  {(() => {
+                    const gst = form.supplierGST.trim();
+                    const formatBad = gst && !GSTIN_REGEX.test(gst);
+                    const stateMismatch = gst.length >= 2 && form.supplierState && gst.slice(0, 2) !== form.supplierState;
+                    return (
+                      <>
+                        <input
+                          value={form.supplierGST}
+                          onChange={(e) => setForm({ ...form, supplierGST: e.target.value.toUpperCase() })}
+                          placeholder="09AABCA1234A1ZP"
+                          className={`w-full px-3 py-1.5 border rounded-lg text-sm font-mono ${formatBad || stateMismatch ? "border-red-300 bg-red-50" : "border-slate-300"}`}
+                          maxLength={15}
+                        />
+                        {formatBad && <p className="text-xs text-red-600 mt-1">Invalid GSTIN format</p>}
+                        {!formatBad && stateMismatch && <p className="text-xs text-red-600 mt-1">First two digits must be {form.supplierState} to match the selected state.</p>}
+                        {!formatBad && !stateMismatch && gst && GSTIN_REGEX.test(gst) && <p className="text-xs text-emerald-600 mt-1"><CheckCircle2 className="w-3 h-3 inline" /> Valid GSTIN</p>}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             ) : (
               <div className="grid md:grid-cols-2 gap-2">

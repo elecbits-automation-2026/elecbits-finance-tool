@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Edit3, History, XCircle, CheckCircle2, Ban, Paperclip, Undo2 } from "lucide-react";
-import { CURRENCIES } from "../constants";
+import { CURRENCIES, INDIAN_STATES } from "../constants";
 import { getRoster } from "../lib/roster";
 import { AttachmentViewer } from "../components/AttachmentViewer";
 
@@ -54,7 +54,10 @@ export function RequestDetails({ request: r, pos_all, requests_all = [] }) {
                   {r.supplierTaxId && <div><span className="text-slate-500">Tax ID:</span> <span className="font-mono">{r.supplierTaxId}</span></div>}
                 </>
               ) : (
-                r.supplierGST && <div><span className="text-slate-500">GSTIN:</span> <span className="font-mono">{r.supplierGST}</span></div>
+                <>
+                  {r.supplierState && <div><span className="text-slate-500">State:</span> {INDIAN_STATES.find(s => s.code === r.supplierState)?.name || r.supplierState}</div>}
+                  {r.supplierGST && <div><span className="text-slate-500">GSTIN:</span> <span className="font-mono">{r.supplierGST}</span></div>}
+                </>
               )}
               <div><span className="text-slate-500">Delivery:</span> {r.deliveryTimeline}</div>
               <div><span className="text-slate-500">Terms:</span> {r.paymentTerms}</div>

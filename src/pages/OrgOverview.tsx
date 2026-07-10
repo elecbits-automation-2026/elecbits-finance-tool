@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FileText, CheckCircle2, Clock, PiggyBank } from "lucide-react";
 import { filterByAccess } from "../lib/access";
+import { getProjectClientOrderValue, getProjectStars } from "../lib/finance";
 import { StatCards } from "../components/StatCards";
 import { DrillDownModal } from "../requests/DrillDownModal";
 
@@ -65,8 +66,10 @@ export function OrgOverview({ user, requests, budgets, pos, showToast }) {
           {clientBudgets.length === 0 ? <p className="text-sm text-slate-500">None</p> : (
             <div className="space-y-2 text-sm">
               {clientBudgets.map(b => {
-                const margin = ((b.clientOrderValue - b.amountINR) / b.clientOrderValue) * 100;
-                return <div key={b.id} className="flex justify-between"><span className="text-xs font-mono truncate pr-2">{b.projectId}</span><span className={`font-bold ${margin >= 20 ? "text-emerald-700" : margin >= 10 ? "text-amber-700" : "text-red-700"}`}>{margin.toFixed(1)}%</span></div>;
+                const cov = getProjectClientOrderValue(pos, b.projectId) || b.clientOrderValue || 0;
+                const margin = cov > 0 ? ((cov - b.amountINR) / cov) * 100 : 0;
+                const stars = getProjectStars(pos, requests, b.projectId);
+                return <div key={b.id} className="flex justify-between items-center gap-2"><span className="text-xs font-mono truncate pr-2">{b.projectId}</span><span className="flex items-center gap-2">{stars != null && <span className={`text-xs font-bold ${stars >= 5 ? "text-emerald-700" : stars >= 3 ? "text-amber-700" : "text-red-700"}`}>★{stars.toFixed(1)}</span>}<span className={`font-bold ${margin >= 20 ? "text-emerald-700" : margin >= 10 ? "text-amber-700" : "text-red-700"}`}>{margin.toFixed(1)}%</span></span></div>;
               })}
             </div>
           )}

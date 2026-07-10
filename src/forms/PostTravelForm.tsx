@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ClipboardCheck } from "lucide-react";
 import { AttachmentInput } from "../components/AttachmentInput";
+import { uploadAttachment } from "../lib/storage";
 
 // ============ TRAVEL OUTCOME (POST-TRAVEL) FORM ============
 // Filed by the traveller AFTER their travel request is approved & paid, to record the
@@ -30,9 +31,13 @@ export function PostTravelForm({ request: r, user, requests_all, saveRequests, o
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { setErr("File too large. Max 2MB."); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => { setForm({ ...form, attachment: { name: file.name, size: file.size, type: file.type, data: ev.target.result, uploadedAt: new Date().toISOString() } }); setErr(""); };
-    reader.readAsDataURL(file);
+    try {
+      const att = await uploadAttachment(file);
+      setForm(f => ({ ...f, attachment: att }));
+      setErr("");
+    } catch (err) {
+      setErr("Upload failed: " + (err?.message || "please try again"));
+    }
   }
 
   async function submit() {

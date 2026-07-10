@@ -1,10 +1,17 @@
 import { useState } from "react";
 import { Briefcase, Target, Zap } from "lucide-react";
-import { getMonthlyBudgetUsage, getProjectSpend } from "../lib/finance";
+import { getMonthlyBudgetUsage, getProjectSpend, getProjectClientOrderValue, getProjectStars } from "../lib/finance";
+
+// Margin-star badge (0–6). Green ≥5 (kept the margin), amber 3–5, red <3 (ate it).
+function StarBadge({ stars }) {
+  if (stars == null) return null;
+  const tone = stars >= 5 ? "emerald" : stars >= 3 ? "amber" : "red";
+  return <span className={`text-xs px-2 py-0.5 rounded font-bold bg-${tone}-100 text-${tone}-700`} title="Margin stars (0–6): from actual paid vs client order value">★ {stars.toFixed(1)}</span>;
+}
 import { isReadOnly } from "../lib/access";
 
 // ============ BUDGET VIEW ============
-export function BudgetView({ user, budgets, requests }) {
+export function BudgetView({ user, budgets, requests, pos = [] }) {
   const [tab, setTab] = useState("client");
 
   // Read-only viewers only see their own department's budgets. An extension
@@ -37,7 +44,9 @@ export function BudgetView({ user, budgets, requests }) {
           {clientProjects.map(b => {
             const { paid, committed } = getProjectSpend(requests, b.projectId);
             const util = ((paid + committed) / b.amountINR) * 100;
-            const margin = ((b.clientOrderValue - b.amountINR) / b.clientOrderValue) * 100;
+            const cov = getProjectClientOrderValue(pos, b.projectId) || b.clientOrderValue || 0;
+            const margin = cov > 0 ? ((cov - b.amountINR) / cov) * 100 : 0;
+            const stars = getProjectStars(pos, requests, b.projectId);
             return (
               <div key={b.id} className="bg-white rounded-xl border border-slate-200 p-4">
                 <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -46,10 +55,10 @@ export function BudgetView({ user, budgets, requests }) {
                     <div className="text-xs text-slate-500 font-mono mt-0.5">{b.projectId}</div>
                     <div className="text-xs text-slate-600 mt-1">{b.dept} · Client: {b.client}</div>
                   </div>
-                  <span className="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 font-semibold">Active</span>
+                  <div className="flex items-center gap-2"><StarBadge stars={stars} /><span className="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 font-semibold">Active</span></div>
                 </div>
                 <div className="grid sm:grid-cols-3 gap-3 mb-3 text-xs">
-                  <div className="bg-slate-50 rounded p-2"><div className="text-slate-500">Client Order</div><div className="font-bold">₹{(b.clientOrderValue / 100000).toFixed(2)}L</div></div>
+                  <div className="bg-slate-50 rounded p-2"><div className="text-slate-500">Client Order</div><div className="font-bold">₹{(cov / 100000).toFixed(2)}L</div></div>
                   <div className="bg-blue-50 rounded p-2"><div className="text-blue-700">Budget</div><div className="font-bold text-blue-900">₹{(b.amountINR / 100000).toFixed(2)}L</div></div>
                   <div className="bg-emerald-50 rounded p-2"><div className="text-emerald-700">Margin</div><div className="font-bold text-emerald-900">{margin.toFixed(1)}%</div></div>
                 </div>

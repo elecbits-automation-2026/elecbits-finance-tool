@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { PiggyBank, Wallet, TrendingUp } from "lucide-react";
-import { getProjectSpend, requestAmountForProject } from "../lib/finance";
+import { getProjectSpend, requestAmountForProject, getProjectClientOrderValue, getProjectStars } from "../lib/finance";
 
 // ============ REPORTS VIEW ============
 export function ReportsView({ user, requests, budgets, pos }) {
@@ -105,8 +105,10 @@ export function ReportsView({ user, requests, budgets, pos }) {
                   const _spend = getProjectSpend(requests, b.projectId);
                   const projPaid = _spend.paid;
                   const projCommitted = _spend.committed;
-                  const profit = b.clientOrderValue - projPaid;
-                  const margin = b.clientOrderValue > 0 ? (profit / b.clientOrderValue) * 100 : 0;
+                  const cov = getProjectClientOrderValue(pos, b.projectId) || b.clientOrderValue || 0;
+                  const profit = cov - projPaid;
+                  const margin = cov > 0 ? (profit / cov) * 100 : 0;
+                  const stars = getProjectStars(pos, requests, b.projectId);
                   return (
                     <div key={b.id} className="bg-slate-50 rounded-lg p-3 border border-slate-200">
                       <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
@@ -114,10 +116,13 @@ export function ReportsView({ user, requests, budgets, pos }) {
                           <div className="font-bold">{b.projectName}</div>
                           <div className="text-xs font-mono text-slate-500">{b.projectId}</div>
                         </div>
-                        <span className={`text-xs px-2 py-0.5 rounded font-bold ${margin >= 20 ? "bg-emerald-100 text-emerald-700" : margin >= 10 ? "bg-amber-100 text-amber-700" : margin >= 0 ? "bg-orange-100 text-orange-700" : "bg-red-100 text-red-700"}`}>{margin >= 0 ? "+" : ""}{margin.toFixed(1)}% margin</span>
+                        <div className="flex items-center gap-2">
+                          {stars != null && <span className={`text-xs px-2 py-0.5 rounded font-bold ${stars >= 5 ? "bg-emerald-100 text-emerald-700" : stars >= 3 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`} title="Margin stars (0–6)">★ {stars.toFixed(1)}</span>}
+                          <span className={`text-xs px-2 py-0.5 rounded font-bold ${margin >= 20 ? "bg-emerald-100 text-emerald-700" : margin >= 10 ? "bg-amber-100 text-amber-700" : margin >= 0 ? "bg-orange-100 text-orange-700" : "bg-red-100 text-red-700"}`}>{margin >= 0 ? "+" : ""}{margin.toFixed(1)}% margin</span>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                        <div className="bg-white rounded p-2"><div className="text-slate-500">Client Order</div><div className="font-bold">₹{(b.clientOrderValue / 100000).toFixed(2)}L</div></div>
+                        <div className="bg-white rounded p-2"><div className="text-slate-500">Client Order</div><div className="font-bold">₹{(cov / 100000).toFixed(2)}L</div></div>
                         <div className="bg-white rounded p-2"><div className="text-slate-500">Budget</div><div className="font-bold">₹{(b.amountINR / 100000).toFixed(2)}L</div></div>
                         <div className="bg-white rounded p-2"><div className="text-slate-500">Paid</div><div className="font-bold text-emerald-700">₹{(projPaid / 100000).toFixed(2)}L</div></div>
                         <div className={`rounded p-2 ${profit >= 0 ? "bg-emerald-50" : "bg-red-50"}`}><div className={profit >= 0 ? "text-emerald-700" : "text-red-700"}>P&L</div><div className={`font-bold ${profit >= 0 ? "text-emerald-900" : "text-red-900"}`}>₹{(profit / 100000).toFixed(2)}L</div></div>
@@ -129,6 +134,32 @@ export function ReportsView({ user, requests, budgets, pos }) {
               </div>
             )}
           </div>
+          {clientProjects.length > 0 && (() => {
+            const byOwner = new Map();
+            clientProjects.forEach(b => {
+              const s = getProjectStars(pos, requests, b.projectId);
+              if (s == null) return;
+              const key = b.requesterName || "—";
+              if (!byOwner.has(key)) byOwner.set(key, []);
+              byOwner.get(key).push(s);
+            });
+            const rows = [...byOwner.entries()].map(([name, arr]) => ({ name, avg: arr.reduce((a, c) => a + c, 0) / arr.length, n: arr.length })).sort((a, b) => b.avg - a.avg);
+            if (rows.length === 0) return null;
+            return (
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <h3 className="font-bold text-slate-900 mb-1">Margin Performance by Owner</h3>
+                <p className="text-xs text-slate-500 mb-3">Average margin stars across each owner's Client projects (live, from paid vs client order value). 5★ = on-target 20% margin, up to 6★ for saving more, lower = margin eaten.</p>
+                <div className="space-y-1.5">
+                  {rows.map(r => (
+                    <div key={r.name} className="flex items-center justify-between text-sm">
+                      <span className="truncate pr-2">{r.name} <span className="text-xs text-slate-400">· {r.n} project{r.n > 1 ? "s" : ""}</span></span>
+                      <span className={`font-bold ${r.avg >= 5 ? "text-emerald-700" : r.avg >= 3 ? "text-amber-700" : "text-red-700"}`}>★ {r.avg.toFixed(1)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {rdProjects.length > 0 && (
             <div className="bg-fuchsia-50 rounded-xl border border-fuchsia-200 p-4">
               <h3 className="font-bold text-fuchsia-900 mb-1">R&D Cost Center</h3>
