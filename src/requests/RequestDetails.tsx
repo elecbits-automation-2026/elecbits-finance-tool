@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Edit3, History, XCircle, CheckCircle2, Ban, Paperclip, Undo2 } from "lucide-react";
 import { CURRENCIES, INDIAN_STATES } from "../constants";
+import { attList } from "../lib/storage";
 import { getRoster } from "../lib/roster";
 import { AttachmentViewer } from "../components/AttachmentViewer";
 
@@ -198,31 +199,31 @@ export function RequestDetails({ request: r, pos_all, requests_all = [] }) {
               {r.postTravel.expectedOrderDate && <div><span className="text-slate-500">Expected order date:</span> {r.postTravel.expectedOrderDate}</div>}
               {r.postTravel.followUpActions && <div><span className="text-slate-500">Follow-up:</span> {r.postTravel.followUpActions}</div>}
               {r.postTravel.remarks && <div><span className="text-slate-500">Remarks:</span> {r.postTravel.remarks}</div>}
-              {(r.postTravel.boardingPass || r.postTravel.receipt) && (
+              {(attList(r.postTravel.boardingPass).length > 0 || attList(r.postTravel.receipt).length > 0) && (
                 <div>
-                  <span className="text-slate-500">Boarding pass:</span>{" "}
-                  <button onClick={() => setViewAttachment(r.postTravel.boardingPass || r.postTravel.receipt)} className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-800 underline font-medium"><Paperclip className="w-3 h-3" />{(r.postTravel.boardingPass || r.postTravel.receipt).name}</button>
+                  <span className="text-slate-500">Boarding pass / receipt:</span>{" "}
+                  {[...attList(r.postTravel.boardingPass), ...attList(r.postTravel.receipt)].map((f, i) => <button key={i} onClick={() => setViewAttachment(f)} className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-800 underline font-medium mr-3"><Paperclip className="w-3 h-3" />{f.name}</button>)}
                 </div>
               )}
               {r.postTravel.filedBy && <div className="text-slate-400">Filed by {r.postTravel.filedBy}{r.postTravel.filedAt ? ` · ${new Date(r.postTravel.filedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}</div>}
             </div>
           )}
-          {r.attachment && (
+          {attList(r.attachment).length > 0 && (
             <div className="sm:col-span-2">
-              <span className="text-slate-500">Attachment:</span>{" "}
-              <button onClick={() => setViewAttachment(r.attachment)} className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 underline font-medium"><Paperclip className="w-3 h-3" />{r.attachment.name}</button>
+              <span className="text-slate-500">Attachment{attList(r.attachment).length > 1 ? "s" : ""}:</span>{" "}
+              {attList(r.attachment).map((f, i) => <button key={i} onClick={() => setViewAttachment(f)} className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 underline font-medium mr-3"><Paperclip className="w-3 h-3" />{f.name}</button>)}
             </div>
           )}
-          {r.paymentInvoice && (
+          {attList(r.paymentInvoice).length > 0 && (
             <div className="sm:col-span-2">
               <span className="text-slate-500">Invoice / Bill:</span>{" "}
-              <button onClick={() => setViewAttachment(r.paymentInvoice)} className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 underline font-medium"><Paperclip className="w-3 h-3" />{r.paymentInvoice.name}</button>
+              {attList(r.paymentInvoice).map((f, i) => <button key={i} onClick={() => setViewAttachment(f)} className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 underline font-medium mr-3"><Paperclip className="w-3 h-3" />{f.name}</button>)}
             </div>
           )}
-          {r.paymentProof && (
+          {attList(r.paymentProof).length > 0 && (
             <div className="sm:col-span-2">
               <span className="text-slate-500">Payment Proof:</span>{" "}
-              <button onClick={() => setViewAttachment(r.paymentProof)} className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 underline font-medium"><Paperclip className="w-3 h-3" />{r.paymentProof.name}</button>
+              {attList(r.paymentProof).map((f, i) => <button key={i} onClick={() => setViewAttachment(f)} className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 underline font-medium mr-3"><Paperclip className="w-3 h-3" />{f.name}</button>)}
             </div>
           )}
           {r.paymentUTR && (

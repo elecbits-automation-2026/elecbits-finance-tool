@@ -4,8 +4,9 @@ import { CURRENCIES } from "../constants";
 import { getPIReceived, getPIOutstanding } from "../lib/finance";
 import { isReadOnly } from "../lib/access";
 import { AttachmentViewer } from "../components/AttachmentViewer";
+import { AttachmentInput } from "../components/AttachmentInput";
 import { NewPIRequestForm } from "../forms/NewPIRequestForm";
-import { uploadAttachment } from "../lib/storage";
+import { uploadAttachment, attList } from "../lib/storage";
 
 const RECEIPT_MODES = ["Bank Transfer", "NEFT", "RTGS", "UPI", "Cheque", "Cash", "Other"];
 
@@ -224,7 +225,7 @@ function PICard({ pi, pos, user, onEdit, onCancel, onRecordReceipt, onClose: onC
               <div><span className="text-slate-500">Delivery:</span> {pi.deliveryTimeline}</div>
               <div><span className="text-slate-500">Terms:</span> {pi.paymentTerms}</div>
             </div>
-            {pi.attachment && <div><span className="text-slate-500">Quote:</span> <button onClick={() => setViewAttachment(pi.attachment)} className="text-teal-700 underline font-medium inline-flex items-center gap-1"><Paperclip className="w-3 h-3" />{pi.attachment.name}</button></div>}
+            {attList(pi.attachment).length > 0 && <div><span className="text-slate-500">Quote:</span> {attList(pi.attachment).map((f, i) => <button key={i} onClick={() => setViewAttachment(f)} className="text-teal-700 underline font-medium inline-flex items-center gap-1 mr-2"><Paperclip className="w-3 h-3" />{f.name}</button>)}</div>}
             {pi.receipts && pi.receipts.length > 0 && (
               <div>
                 <div className="font-bold text-slate-700 mb-1 flex items-center gap-1"><Coins className="w-3 h-3" />Receipts ({pi.receipts.length}) · ₹{(received / 100000).toFixed(2)}L received of ₹{((pi.amountINR || 0) / 100000).toFixed(2)}L</div>
@@ -236,7 +237,7 @@ function PICard({ pi, pos, user, onEdit, onCancel, onRecordReceipt, onClose: onC
                       {rc.mode && <span className="text-slate-500">{rc.mode}</span>}
                       {rc.reference && <span className="font-mono text-slate-600">{rc.reference}</span>}
                       {rc.note && <span className="text-slate-500 italic">"{rc.note}"</span>}
-                      {rc.proof && <button onClick={() => setViewAttachment(rc.proof)} className="text-teal-700 underline inline-flex items-center gap-1"><Paperclip className="w-3 h-3" />proof</button>}
+                      {attList(rc.proof).map((f, k) => <button key={k} onClick={() => setViewAttachment(f)} className="text-teal-700 underline inline-flex items-center gap-1"><Paperclip className="w-3 h-3" />proof{attList(rc.proof).length > 1 ? ` ${k + 1}` : ""}</button>)}
                       <span className="text-slate-400 ml-auto">by {rc.receivedBy}</span>
                     </div>
                   ))}
@@ -338,14 +339,7 @@ function PIReceiptModal({ pi, user, pos, savePOs, onClose, showToast }) {
             <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Mode</label><select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })} className={input + " bg-white"}>{RECEIPT_MODES.map(m => <option key={m}>{m}</option>)}</select></div>
           </div>
           <div><label className="block text-xs font-semibold text-slate-700 mb-1.5">Note</label><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Optional" className={input} /></div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Proof (optional)</label>
-            {form.proof ? (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex items-center justify-between text-xs"><span className="inline-flex items-center gap-1 text-emerald-800"><Paperclip className="w-3 h-3" />{form.proof.name}</span><button onClick={() => setForm({ ...form, proof: null })} className="text-red-600"><X className="w-3.5 h-3.5" /></button></div>
-            ) : (
-              <label className="flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-emerald-400 text-xs text-slate-600"><Upload className="w-4 h-4" />Upload proof (max 2MB)<input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={handleFile} /></label>
-            )}
-          </div>
+          <AttachmentInput form={form} setForm={setForm} field="proof" label="Proof (optional)" />
           {err && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">{err}</div>}
           <div className="flex gap-2">
             <button onClick={submit} disabled={busy} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white text-sm font-semibold px-4 py-2 rounded-lg">Record Receipt</button>

@@ -4,6 +4,7 @@ import { CURRENCIES } from "../constants";
 import { getPOUsage, getPOAvailable } from "../lib/finance";
 import { isReadOnly } from "../lib/access";
 import { AttachmentViewer } from "../components/AttachmentViewer";
+import { attList } from "../lib/storage";
 import { NewPORequestForm } from "../forms/NewPORequestForm";
 
 // ============ PO LIST VIEW ============
@@ -220,7 +221,7 @@ function POCard({ po, requests, pos, user, onEdit, onCancel, onClose: onCloseMan
               <div><span className="text-slate-500">Delivery:</span> {po.deliveryTimeline}</div>
               <div><span className="text-slate-500">Terms:</span> {po.paymentTerms}</div>
             </div>
-            {po.attachment && <div><span className="text-slate-500">Quote:</span> <button onClick={() => setViewAttachment(po.attachment)} className="text-fuchsia-700 underline font-medium inline-flex items-center gap-1"><Paperclip className="w-3 h-3" />{po.attachment.name}</button></div>}
+            {attList(po.attachment).length > 0 && <div><span className="text-slate-500">Quote:</span> {attList(po.attachment).map((f, i) => <button key={i} onClick={() => setViewAttachment(f)} className="text-fuchsia-700 underline font-medium inline-flex items-center gap-1 mr-2"><Paperclip className="w-3 h-3" />{f.name}</button>)}</div>}
             {po.poDocument && <div><span className="text-slate-500">Signed Document:</span> <button onClick={() => setViewAttachment(po.poDocument)} className="text-fuchsia-700 underline font-medium inline-flex items-center gap-1"><Paperclip className="w-3 h-3" />{po.poDocument.name}</button></div>}
             {linkedReqs.length > 0 && (
               <div>

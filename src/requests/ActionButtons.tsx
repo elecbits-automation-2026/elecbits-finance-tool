@@ -4,6 +4,7 @@ import { getStageLabel, computeNextStage, getDeptHeadsForDept } from "../lib/wor
 import { getRoster } from "../lib/roster";
 import { formatPONumber, formatPINumber, getPOUsage, getActiveBudgetForProject, getProjectSpend, getPOAvailable } from "../lib/finance";
 import { uploadAttachment } from "../lib/storage";
+import { AttachmentInput } from "../components/AttachmentInput";
 
 // ============ ACTION BUTTONS ============
 export function ActionButtons({ request, user, requests_all, budgets_all, pos_all, saveRequests, saveBudgets, savePOs, savePOCounter, savePICounter, poCounter, piCounter, addNotifications, showToast }) {
@@ -422,29 +423,13 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
           {/* Document upload — for create only (edit/cancel don't issue a new document) */}
           {!isDocEdit && !isDocCancel && (
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {docLabel} Document <span className="text-red-500">*</span> <span className="font-normal text-slate-500">(signed / stamped — required)</span>
-              </label>
-              {!poAttachment ? (
-                <label className="flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-fuchsia-300 rounded-lg cursor-pointer hover:border-fuchsia-500 hover:bg-fuchsia-100/50 text-xs text-slate-600 transition">
-                  <Upload className="w-4 h-4 text-fuchsia-500" />
-                  <span>Upload signed {docLabel} document <span className="text-slate-400">(PDF, PNG, JPG — max 2 MB)</span></span>
-                  <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={handlePOAttachmentUpload} />
-                </label>
-              ) : (
-                <div className="bg-white border border-fuchsia-200 rounded-lg p-2.5 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <Paperclip className="w-3.5 h-3.5 text-fuchsia-600 shrink-0" />
-                    <div>
-                      <div className="font-semibold text-slate-900">{poAttachment.name}</div>
-                      <div className="text-slate-500">{(poAttachment.size / 1024).toFixed(1)} KB</div>
-                    </div>
-                  </div>
-                  <button onClick={() => setPOAttachment(null)} className="text-red-500 hover:bg-red-50 p-1 rounded" title="Remove">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
+              <AttachmentInput
+                form={{ poAttachment }}
+                setForm={(updater) => setPOAttachment((prev) => updater({ poAttachment: prev }).poAttachment)}
+                field="poAttachment"
+                required
+                label={`${docLabel} Document (signed / stamped)`}
+              />
             </div>
           )}
 
@@ -475,34 +460,8 @@ export function ActionButtons({ request, user, requests_all, budgets_all, pos_al
             </div>
           </div>
           <div><label className="block text-xs font-semibold text-slate-700 mb-1">Payment Date</label><input type="date" value={paymentForm.paymentDate} onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })} className="w-full text-xs px-2 py-1.5 border border-slate-300 rounded-lg" /></div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Invoice / Bill <span className="font-normal text-slate-500">(attach this or the payment proof)</span></label>
-            {!paymentForm.invoiceAttachment ? (
-              <label className="flex items-center justify-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-emerald-400 hover:bg-white text-xs">
-                <Upload className="w-4 h-4" />Upload invoice / bill (PDF, PNG, JPG, DOC — max 2MB)
-                <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={handlePaymentInvoiceUpload} />
-              </label>
-            ) : (
-              <div className="bg-white border border-emerald-200 rounded-lg p-2 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2"><Paperclip className="w-3 h-3 text-emerald-700" /><span className="font-medium">{paymentForm.invoiceAttachment.name}</span></div>
-                <button onClick={() => setPaymentForm({ ...paymentForm, invoiceAttachment: null })} className="text-red-600"><X className="w-3 h-3" /></button>
-              </div>
-            )}
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Payment Proof / Receipt <span className="font-normal text-slate-500">(attach this or the invoice)</span></label>
-            {!paymentForm.proofAttachment ? (
-              <label className="flex items-center justify-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-emerald-400 hover:bg-white text-xs">
-                <Upload className="w-4 h-4" />Upload payment-done proof (PDF, PNG, JPG — max 2MB)
-                <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg" onChange={handlePaymentProofUpload} />
-              </label>
-            ) : (
-              <div className="bg-white border border-emerald-200 rounded-lg p-2 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2"><Paperclip className="w-3 h-3 text-emerald-700" /><span className="font-medium">{paymentForm.proofAttachment.name}</span></div>
-                <button onClick={() => setPaymentForm({ ...paymentForm, proofAttachment: null })} className="text-red-600"><X className="w-3 h-3" /></button>
-              </div>
-            )}
-          </div>
+          <AttachmentInput form={paymentForm} setForm={setPaymentForm} field="invoiceAttachment" label="Invoice / Bill (attach this or the payment proof)" />
+          <AttachmentInput form={paymentForm} setForm={setPaymentForm} field="proofAttachment" label="Payment Proof / Receipt (attach this or the invoice)" />
           <div><label className="block text-xs font-semibold text-slate-700 mb-1">Note</label><input value={paymentForm.note} onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })} className="w-full text-xs px-2 py-1.5 border border-slate-300 rounded-lg" /></div>
           <div className="flex gap-2 pt-1">
             <button onClick={() => doAction("pay")} disabled={busy || (!paymentForm.invoiceAttachment && !paymentForm.proofAttachment)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Confirm Payment Done</button>
