@@ -13,6 +13,16 @@ import { supabase } from "./supabase";
 const BUCKET = "attachments";
 const SIGNED_TTL_SECONDS = 60 * 10; // 10 minutes — long enough to view/download
 
+// Accepted upload types (documents, images, and spreadsheets/CSV).
+export const ATTACHMENT_ACCEPT = ".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv";
+
+// Attachment fields hold EITHER a single object (legacy) or an array (multi).
+// Normalise to an array so all readers can iterate uniformly.
+export function attList(x: any): any[] {
+  if (Array.isArray(x)) return x.filter(Boolean);
+  return x ? [x] : [];
+}
+
 type AttachmentPointer = {
   name: string;
   size: number;

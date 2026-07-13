@@ -1,5 +1,6 @@
 import { FileSignature, PiggyBank, Wallet, Paperclip, Eye, RotateCcw, ClipboardCheck, AlertTriangle, Undo2, Repeat } from "lucide-react";
 import { CURRENCIES } from "../constants";
+import { attList } from "../lib/storage";
 import { ActionButtons } from "./ActionButtons";
 import { CancelButton } from "./CancelButton";
 import { RequestDetails } from "./RequestDetails";
@@ -60,7 +61,7 @@ export function RequestCard({ request: r, user, requests_all, budgets_all, pos_a
               {r.currency && r.currency !== "INR" && <span className="text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold">{r.currency}</span>}
               {r.resubmittedFrom && !r.revisionRound && <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Resubmitted</span>}
               {r.revisionRound > 0 && <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700 flex items-center gap-0.5"><Repeat className="w-3 h-3" />Re-requested · round {r.revisionRound}</span>}
-              {r.attachment && <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 flex items-center gap-0.5"><Paperclip className="w-3 h-3" /></span>}
+              {attList(r.attachment).length > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 flex items-center gap-0.5"><Paperclip className="w-3 h-3" />{attList(r.attachment).length > 1 ? attList(r.attachment).length : ""}</span>}
             </div>
             <div className="font-semibold text-slate-900 text-sm">
               {isPOorPI ? (r.type === "POEdit" || r.type === "PIEdit" ? `Edit: ${editLabel} — ${r.supplierName}` : r.type === "POCancel" || r.type === "PICancel" ? `Cancel: ${cancelLabel}` : `${r.supplierName}`) :

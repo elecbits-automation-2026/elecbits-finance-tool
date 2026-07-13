@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Edit3, FileSignature, Briefcase, Target, AlertTriangle, Plus, X, CheckCircle2, FileText, PencilLine } from "lucide-react";
-import { CURRENCIES, EXPENSE_TYPES, NON_PROJECT_DEPTS, GSTIN_REGEX, GST_RATES, UNIT_OPTIONS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD } from "../constants";
+import { CURRENCIES, EXPENSE_TYPES, NON_PROJECT_DEPTS, GSTIN_REGEX, GST_RATES, UNIT_OPTIONS, MAX_BUDGET_RATIO, VP_THRESHOLD, CEO_THRESHOLD, INDIAN_STATES } from "../constants";
 import { isReadOnly } from "../lib/access";
 import { getEligibleDeptApprovers, needsBoxBuildMidApproval, getStageLabel, computeNextStage } from "../lib/workflow";
 import { getRoster } from "../lib/roster";
@@ -21,6 +21,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
     supplierName: editFor.supplierName,
     supplierAddress: editFor.supplierAddress,
     supplierGST: editFor.supplierGST || "",
+    supplierState: editFor.supplierState || "",
     isInternational: editFor.isInternational || false,
     supplierCountry: editFor.supplierCountry || "",
     supplierTaxId: editFor.supplierTaxId || "",
@@ -42,7 +43,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
     isProject: reviseFrom.isProject,
     projectId: reviseFrom.projectId || "", category: reviseFrom.category || "",
     supplierId: "",
-    supplierName: reviseFrom.supplierName || "", supplierAddress: reviseFrom.supplierAddress || "", supplierGST: reviseFrom.supplierGST || "",
+    supplierName: reviseFrom.supplierName || "", supplierAddress: reviseFrom.supplierAddress || "", supplierGST: reviseFrom.supplierGST || "", supplierState: reviseFrom.supplierState || "",
     isInternational: reviseFrom.isInternational || false, supplierCountry: reviseFrom.supplierCountry || "", supplierTaxId: reviseFrom.supplierTaxId || "",
     hasPI: reviseFrom.hasPI || false, piNumber: reviseFrom.piNumber || "", piSubtotal: reviseFrom.piSubtotal != null ? String(reviseFrom.piSubtotal) : "", piGstPct: reviseFrom.piGstPct != null ? reviseFrom.piGstPct : 18,
     lineItems: reviseFrom.lineItems && reviseFrom.lineItems.length ? JSON.parse(JSON.stringify(reviseFrom.lineItems)) : [{ id: "L1", description: "", qty: "", unit: "pcs", unitCost: "", gstPct: 18 }],
@@ -54,7 +55,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
     isProject: !NON_PROJECT_DEPTS.includes(user.dept),
     projectId: "", category: "",
     supplierId: "",
-    supplierName: "", supplierAddress: "", supplierGST: "",
+    supplierName: "", supplierAddress: "", supplierGST: "", supplierState: "",
     isInternational: false, supplierCountry: "", supplierTaxId: "",
     hasPI: false, piNumber: "", piSubtotal: "", piGstPct: 18,
     lineItems: [{ id: "L1", description: "", qty: "", unit: "pcs", unitCost: "", gstPct: 18 }],
@@ -110,6 +111,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
       supplierName: s.name || "",
       supplierAddress: s.address || "",
       supplierGST: s.gstin || "",
+      supplierState: s.state || (s.gstin ? String(s.gstin).slice(0, 2) : ""),
       isInternational: !!s.isInternational,
       supplierCountry: s.country || "",
       supplierTaxId: s.taxId || "",
@@ -158,8 +160,13 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
 
     // GSTIN validation
     if (!form.isInternational) {
+      if (!form.supplierState) return setErr("Select the supplier's state");
       if (!form.supplierGST.trim()) return setErr("GSTIN required for Indian suppliers (or check 'International supplier' if not applicable)");
       if (!GSTIN_REGEX.test(form.supplierGST.trim().toUpperCase())) return setErr("Invalid GSTIN format. Expected 15 chars like 09AABCA1234A1ZP");
+      if (form.supplierGST.trim().slice(0, 2) !== form.supplierState) {
+        const st = INDIAN_STATES.find(s => s.code === form.supplierState);
+        return setErr(`GSTIN must start with ${form.supplierState} (${st?.name}) — its first two digits are the state code. Check the state or the GSTIN.`);
+      }
     } else {
       if (!form.supplierCountry.trim()) return setErr("Country required for international supplier");
     }
@@ -260,6 +267,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
           name: form.supplierName.trim(),
           address: form.supplierAddress.trim(),
           gstin: form.isInternational ? "" : gstKey,
+          state: form.isInternational ? "" : form.supplierState,
           isInternational: !!form.isInternational,
           country: form.supplierCountry.trim(),
           taxId: form.supplierTaxId.trim(),
@@ -273,6 +281,7 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
       isProject: form.isProject, projectId: form.projectId, category: form.category,
       supplierName: form.supplierName, supplierAddress: form.supplierAddress,
       supplierGST: form.supplierGST.trim().toUpperCase(),
+      supplierState: form.isInternational ? "" : form.supplierState,
       isInternational: form.isInternational, supplierCountry: form.supplierCountry, supplierTaxId: form.supplierTaxId,
       hasPI: !!form.hasPI,
       piNumber: form.hasPI ? form.piNumber.trim() : "",
@@ -474,17 +483,40 @@ export function NewPORequestForm({ user, budgets, pos, requests, suppliers = [],
               />
             </div>
             {!form.isInternational ? (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">GSTIN * <span className="font-normal text-slate-500">(15 chars, e.g. 09AABCA1234A1ZP)</span></label>
-                <input
-                  value={form.supplierGST}
-                  onChange={(e) => updateSupplierField("supplierGST", e.target.value.toUpperCase())}
-                  placeholder="09AABCA1234A1ZP"
-                  className={`w-full px-3 py-1.5 border rounded-lg text-sm font-mono ${form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) ? "border-red-300 bg-red-50" : "border-slate-300"}`}
-                  maxLength={15}
-                />
-                {form.supplierGST && !GSTIN_REGEX.test(form.supplierGST.trim()) && <p className="text-xs text-red-600 mt-1">Invalid GSTIN format</p>}
-                {form.supplierGST && GSTIN_REGEX.test(form.supplierGST.trim()) && <p className="text-xs text-emerald-600 mt-1"><CheckCircle2 className="w-3 h-3 inline" /> Valid GSTIN</p>}
+              <div className="grid md:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">State *</label>
+                  <select
+                    value={form.supplierState}
+                    onChange={(e) => { const code = e.target.value; updateSupplierField("supplierState", code); if (code) updateSupplierField("supplierGST", code + form.supplierGST.slice(2)); }}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
+                  >
+                    <option value="">Select state</option>
+                    {[...INDIAN_STATES].sort((a, b) => a.name.localeCompare(b.name)).map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">GSTIN * <span className="font-normal text-slate-500">(15 chars, e.g. 09AABCA1234A1ZP)</span></label>
+                  {(() => {
+                    const gst = form.supplierGST.trim();
+                    const formatBad = gst && !GSTIN_REGEX.test(gst);
+                    const stateMismatch = gst.length >= 2 && form.supplierState && gst.slice(0, 2) !== form.supplierState;
+                    return (
+                      <>
+                        <input
+                          value={form.supplierGST}
+                          onChange={(e) => updateSupplierField("supplierGST", e.target.value.toUpperCase())}
+                          placeholder="09AABCA1234A1ZP"
+                          className={`w-full px-3 py-1.5 border rounded-lg text-sm font-mono ${formatBad || stateMismatch ? "border-red-300 bg-red-50" : "border-slate-300"}`}
+                          maxLength={15}
+                        />
+                        {formatBad && <p className="text-xs text-red-600 mt-1">Invalid GSTIN format</p>}
+                        {!formatBad && stateMismatch && <p className="text-xs text-red-600 mt-1">First two digits must be {form.supplierState} to match the selected state.</p>}
+                        {!formatBad && !stateMismatch && gst && GSTIN_REGEX.test(gst) && <p className="text-xs text-emerald-600 mt-1"><CheckCircle2 className="w-3 h-3 inline" /> Valid GSTIN</p>}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             ) : (
               <div className="grid md:grid-cols-2 gap-2">
