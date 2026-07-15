@@ -37,7 +37,14 @@ export async function getCurrentUser() {
   const { data } = await supabase.auth.getSession();
   const authUser = data.session?.user;
   if (!authUser) return null;
-  const profile = await profileForAuthId(authUser.id);
+  let profile = await profileForAuthId(authUser.id);
+  // OAuth (Google) sign-in can authenticate under a uid that isn't yet linked to the
+  // existing profile. Adopt the profile matching this verified email server-side (RLS
+  // blocks re-pointing auth_id from the client), then re-read.
+  if (!profile && authUser.email) {
+    try { await supabase.rpc("claim_profile_for_auth"); } catch { /* best effort */ }
+    profile = await profileForAuthId(authUser.id);
+  }
   if (!profile) return null;
   // Mirror signIn's status gate on the session-restore path. signUp() creates a
   // Supabase session immediately, so without this a freshly-signed-up (pending)
@@ -88,6 +95,21 @@ export async function signIn(email: string, password: string) {
     await supabase.from("profiles").update({ must_reset_password: false }).eq("auth_id", data.user.id);
   }
   return { success: true as const, user: toUser(profile) };
+}
+
+// Google Workspace SSO. The Internal consent screen (and the hd hint) keep it to
+// @elecbits.in. After the redirect, App's onAuthStateChange -> getCurrentUser
+// resolves the profile (adopting it by verified email if it isn't linked yet).
+export async function signInWithGoogle() {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin,
+      queryParams: { hd: "elecbits.in", prompt: "select_account" },
+    },
+  });
+  if (error) return { success: false as const, error: error.message };
+  return { success: true as const };
 }
 
 export async function signOut() {
